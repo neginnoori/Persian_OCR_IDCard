@@ -106,6 +106,34 @@ class CardOCR:
         self.processor.config.mag_ratio = 1.0
 
     def locate(self, image):
+        """Retry tight crops with temporary context; return original-image coordinates."""
+        self.last_location_attempts = []
+        last_peaks = []
+        for fraction in (0., .15):
+            padding = round(max(image.size)*fraction)
+            candidate = ImageOps.expand(image, border=padding, fill=(127, 127, 127)) if padding else image
+            points, peaks = self._locate_once(candidate)
+            last_peaks = peaks
+            if points is not None:
+                points = points - padding
+                # Allow only tiny localization overshoot at the physical image border.
+                # Never project arbitrary outside corners onto the image.
+                tolerance = .02*min(image.size)
+                if (points[:, 0].min() >= -tolerance and points[:, 1].min() >= -tolerance
+                        and points[:, 0].max() <= image.width-1+tolerance
+                        and points[:, 1].max() <= image.height-1+tolerance):
+                    points[:, 0] = np.clip(points[:, 0], 0, image.width-1)
+                    points[:, 1] = np.clip(points[:, 1], 0, image.height-1)
+                status = validate_quad(points, image.size)
+            else:
+                status = 'corners_not_found'
+            self.last_location_attempts.append({'padding_pixels': padding, 'status': status,
+                                                'heatmap_peaks': peaks})
+            if status == 'geometry_candidate':
+                return points, peaks
+        return None, last_peaks
+
+    def _locate_once(self, image):
         # Official DocAligner heatmap weights expect BGR, NCHW, [0,1], 256x256.
         bgr = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
         tensor = cv2.resize(bgr, (256, 256)).transpose(2, 0, 1)[None].astype(np.float32)/255.
@@ -120,9 +148,9 @@ class CardOCR:
         # Decode at capped resolution, then map to the original image.
         preview = resize_limit(image, 1200)
         sw, sh = preview.size
-        points, peaks = [], []
+        points = []
+        peaks = [float(heat.max()) for heat in heatmaps[0]]
         for heat in heatmaps[0]:
-            peaks.append(float(heat.max()))
             resized = cv2.resize(heat, (sw, sh), interpolation=cv2.INTER_LINEAR)
             mask = np.uint8(resized >= .3)*255
             contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -230,6 +258,7 @@ class CardOCR:
             image = read_rgb(source)
             points, peaks = self.locate(image)
             result['corner_heatmap_peaks'] = peaks
+            result['location_attempts'] = getattr(self, 'last_location_attempts', [])
             status = validate_quad(points, image.size) if points is not None else 'corners_not_found'
             result['geometry_status'] = status
             if points is not None:

@@ -1,0 +1,11 @@
+{
+  "python": "3.11.11",
+  "device": "cpu",
+  "hezar": "1.0.0",
+  "torch": "2.14.1",
+  "torchvision": "0.29.1",
+  "onnxruntime": "1.31.1",
+  "numpy": "2.4.6",
+  "Pillow": "13.0.0",
+  "kagglehub": "1.0.3"
+}

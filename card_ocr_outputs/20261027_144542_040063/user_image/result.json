@@ -1,0 +1,15 @@
+{
+  "source": "/Users/neginnoori/Downloads/20231030_131723_599212866.jpg",
+  "status": "corners_not_found",
+  "text": "",
+  "regions": [],
+  "variant": "fastvit_t8",
+  "model_sha256": "950070fd4a46e25d46db7c35d0ed77612d9063f70d4543c7c504f0da6a943a89",
+  "review_required": true,
+  "corner_heatmap_peaks": [
+    0.38567471504211426,
+    0.02567926049232483
+  ],
+  "geometry_status": "corners_not_found",
+  "elapsed_seconds": 0.083
+}

@@ -29,6 +29,27 @@ class PipelineTests(unittest.TestCase):
                    {'box': [50, 0, 100, 20], 'text_raw': 'شماره'}]
         self.assertEqual(CardOCR.reading_order(regions), 'شماره ۱۲۳')
 
+    def test_tight_crop_retry_maps_back_to_original(self):
+        engine = CardOCR.__new__(CardOCR)
+        calls = []
+        expected = np.float32([[0, 1], [299, 0], [299, 199], [1, 199]])
+        def locate_once(image):
+            calls.append(image.size)
+            if len(calls) == 1:
+                return None, [.1]*4
+            return expected + 45, [.9]*4
+        engine._locate_once = locate_once
+        points, peaks = engine.locate(Image.new('RGB', (300, 200)))
+        np.testing.assert_allclose(points, expected)
+        self.assertEqual(calls, [(300, 200), (390, 290)])
+        self.assertEqual(engine.last_location_attempts[-1]['padding_pixels'], 45)
+
+    def test_retry_does_not_force_outside_corners_into_frame(self):
+        engine = CardOCR.__new__(CardOCR)
+        engine._locate_once = lambda image: (self.quad+500, [.9]*4)
+        points, _ = engine.locate(Image.new('RGB', (300, 200)))
+        self.assertIsNone(points)
+
     def test_uncertain_direction_and_failure_outputs(self):
         engine = CardOCR.__new__(CardOCR)
         engine.variant, engine.model_sha256 = 'mock', 'test'

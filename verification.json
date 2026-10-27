@@ -2,7 +2,7 @@
   "python": "3.11.11",
   "interpreter": "/Users/neginnoori/Documents/Codex/Persian_OCR_IDCard/.venv/bin/python",
   "unit_tests": {
-    "passed": 4,
+    "passed": 6,
     "failed": 0
   },
   "pip_check": "passed",
@@ -23,5 +23,19 @@
     "onnxruntime": "1.31.1",
     "numpy": "2.4.6",
     "jupyterlab": "4.6.4"
+  },
+  "tight_crop_regression": {
+    "original_status": "corners_not_found",
+    "fixed_status": "ocr_candidate",
+    "error": null,
+    "padding_pixels": 120,
+    "locator_rotations_checked": [
+      0,
+      90,
+      180,
+      270
+    ],
+    "blank_image_rejected": true,
+    "text_output_has_label_noise": true
   }
 }
