@@ -37,5 +37,14 @@
     ],
     "blank_image_rejected": true,
     "text_output_has_label_noise": true
+  },
+  "notebook_v2_execution": {
+    "path": "notebooks/Persian_Card_OCR_v2.ipynb",
+    "all_code_cells_executed": true,
+    "code_cell_count": 10,
+    "cell_errors": 0,
+    "pipeline_revision": "tight-crop-v2",
+    "status": "ocr_candidate",
+    "output_saved_in_notebook": true
   }
 }

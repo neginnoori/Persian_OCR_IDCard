@@ -72,6 +72,7 @@ def warp_card(image, corners, max_side=1800):
 
 class CardOCR:
     """Single-card images. Locator runs on CPU; Hezar can use CUDA."""
+    REVISION = 'tight-crop-v2'
     WEIGHTS = {
         'fastvit_t8': ('fastvit_t8_h_e_bifpn_256_fp32.onnx', '1W88oOkHjMza6xXbDxrG8k_C-Tf2aYKJ4'),
         'fastvit_sa24': ('fastvit_sa24_h_e_bifpn_256_fp32.onnx', '14vUH77v6yGg7zFctUgcT6BzV5Iisg4Dl'),
@@ -253,7 +254,8 @@ class CardOCR:
         folder.mkdir(parents=True, exist_ok=True)
         result = {'source': str(source) if not isinstance(source, Image.Image) else 'PIL.Image',
                   'status': 'started', 'text': '', 'regions': [], 'variant': self.variant,
-                  'model_sha256': self.model_sha256, 'review_required': True}
+                  'model_sha256': self.model_sha256, 'review_required': True,
+                  'pipeline_revision': self.REVISION, 'output_dir': str(folder.resolve())}
         try:
             image = read_rgb(source)
             points, peaks = self.locate(image)
