@@ -1,0 +1,27 @@
+{
+  "python": "3.11.11",
+  "interpreter": "/Users/neginnoori/Documents/Codex/Persian_OCR_IDCard/.venv/bin/python",
+  "unit_tests": {
+    "passed": 4,
+    "failed": 0
+  },
+  "pip_check": "passed",
+  "notebook_schema": "passed",
+  "kernel": "persian-card-ocr",
+  "real_model_smoke_test": {
+    "input": "user supplied Unknown-2.jpeg",
+    "status": "ocr_candidate",
+    "elapsed_seconds": 6.398,
+    "geometry_visually_reviewed": true,
+    "ocr_text_contains_errors": true,
+    "accuracy_evaluation": "not performed"
+  },
+  "versions": {
+    "hezar": "1.0.0",
+    "torch": "2.14.1",
+    "torchvision": "0.29.1",
+    "onnxruntime": "1.31.1",
+    "numpy": "2.4.6",
+    "jupyterlab": "4.6.4"
+  }
+}

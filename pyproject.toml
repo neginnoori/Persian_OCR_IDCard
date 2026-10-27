@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "persian-card-ocr"
+version = "0.1.0"
+description = "Local Iranian card localization and Persian OCR with DocAligner and Hezar"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+  "hezar[vision]==1.0.0", "numpy>=1.26,<3", "opencv-python>=4.9,<5",
+  "onnxruntime>=1.20", "gdown>=5", "kagglehub>=0.3",
+  "pandas>=2.2", "matplotlib>=3.9", "tqdm>=4.66",
+  "jupyterlab>=4.3", "ipykernel>=6.29"
+]
+
+[project.scripts]
+persian-card-ocr = "persian_card_ocr.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
