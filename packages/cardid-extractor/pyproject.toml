@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cardid-extractor"
+version = "0.1.0"
+description = "GPU extraction, perspective correction and orientation of Iranian national ID cards"
+readme = "README.md"
+requires-python = ">=3.10,<3.14"
+dependencies = [
+  "numpy>=1.26,<2.3",
+  "Pillow>=10,<13",
+  "opencv-python-headless>=4.10,<4.13",
+  "torch>=2.6,<2.9",
+  "torchvision>=0.21,<0.24",
+  "transformers==4.57.6",
+  "huggingface-hub>=0.34,<1",
+  "easyocr==1.7.2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10", "build>=1.2,<2"]
+
+[project.scripts]
+cardid-extract = "cardid.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+cardid = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

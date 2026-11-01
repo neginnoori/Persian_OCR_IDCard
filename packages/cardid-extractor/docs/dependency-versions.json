@@ -1,0 +1,321 @@
+{
+  "note": "Resolver dry-run metadata, not a full lockfile or real Linux/CUDA install. See VALIDATION.md.",
+  "profiles": {
+    "dependency-resolution.json": [
+      {
+        "name": "cardid-extractor",
+        "version": "0.1.0"
+      },
+      {
+        "name": "certifi",
+        "version": "2026.10.23"
+      },
+      {
+        "name": "charset-normalizer",
+        "version": "3.5.2"
+      },
+      {
+        "name": "colorama",
+        "version": "0.4.6"
+      },
+      {
+        "name": "easyocr",
+        "version": "1.7.2"
+      },
+      {
+        "name": "filelock",
+        "version": "4.2.5"
+      },
+      {
+        "name": "fsspec",
+        "version": "2026.9.0"
+      },
+      {
+        "name": "huggingface_hub",
+        "version": "0.36.2"
+      },
+      {
+        "name": "idna",
+        "version": "3.20"
+      },
+      {
+        "name": "ImageIO",
+        "version": "2.38.1"
+      },
+      {
+        "name": "Jinja2",
+        "version": "3.1.6"
+      },
+      {
+        "name": "lazy-loader",
+        "version": "0.6"
+      },
+      {
+        "name": "MarkupSafe",
+        "version": "3.0.4"
+      },
+      {
+        "name": "mpmath",
+        "version": "1.3.0"
+      },
+      {
+        "name": "networkx",
+        "version": "3.7"
+      },
+      {
+        "name": "ninja",
+        "version": "1.13.2"
+      },
+      {
+        "name": "numpy",
+        "version": "2.2.6"
+      },
+      {
+        "name": "opencv-python-headless",
+        "version": "4.12.0.88"
+      },
+      {
+        "name": "packaging",
+        "version": "26.3"
+      },
+      {
+        "name": "pillow",
+        "version": "11.3.0"
+      },
+      {
+        "name": "pyclipper",
+        "version": "1.4.0"
+      },
+      {
+        "name": "python-bidi",
+        "version": "0.6.12"
+      },
+      {
+        "name": "PyYAML",
+        "version": "6.0.3"
+      },
+      {
+        "name": "regex",
+        "version": "2026.9.29"
+      },
+      {
+        "name": "requests",
+        "version": "2.34.2"
+      },
+      {
+        "name": "safetensors",
+        "version": "0.8.0"
+      },
+      {
+        "name": "scikit-image",
+        "version": "0.26.0"
+      },
+      {
+        "name": "scipy",
+        "version": "1.18.1"
+      },
+      {
+        "name": "setuptools",
+        "version": "84.2.1"
+      },
+      {
+        "name": "shapely",
+        "version": "2.2.0"
+      },
+      {
+        "name": "sympy",
+        "version": "1.14.0"
+      },
+      {
+        "name": "tifffile",
+        "version": "2026.10.15"
+      },
+      {
+        "name": "tokenizers",
+        "version": "0.22.2"
+      },
+      {
+        "name": "torch",
+        "version": "2.7.1"
+      },
+      {
+        "name": "torchvision",
+        "version": "0.22.1"
+      },
+      {
+        "name": "tqdm",
+        "version": "4.70.1"
+      },
+      {
+        "name": "transformers",
+        "version": "4.57.6"
+      },
+      {
+        "name": "typing_extensions",
+        "version": "4.16.0"
+      },
+      {
+        "name": "urllib3",
+        "version": "2.8.0"
+      }
+    ],
+    "dependency-resolution-linux.json": [
+      {
+        "name": "cardid-extractor",
+        "version": "0.1.0"
+      },
+      {
+        "name": "certifi",
+        "version": "2026.10.23"
+      },
+      {
+        "name": "charset-normalizer",
+        "version": "3.5.2"
+      },
+      {
+        "name": "colorama",
+        "version": "0.4.6"
+      },
+      {
+        "name": "easyocr",
+        "version": "1.7.2"
+      },
+      {
+        "name": "filelock",
+        "version": "4.2.5"
+      },
+      {
+        "name": "fsspec",
+        "version": "2026.9.0"
+      },
+      {
+        "name": "huggingface_hub",
+        "version": "0.36.2"
+      },
+      {
+        "name": "idna",
+        "version": "3.20"
+      },
+      {
+        "name": "ImageIO",
+        "version": "2.38.1"
+      },
+      {
+        "name": "Jinja2",
+        "version": "3.1.6"
+      },
+      {
+        "name": "lazy-loader",
+        "version": "0.6"
+      },
+      {
+        "name": "MarkupSafe",
+        "version": "3.0.4"
+      },
+      {
+        "name": "mpmath",
+        "version": "1.3.0"
+      },
+      {
+        "name": "networkx",
+        "version": "3.7"
+      },
+      {
+        "name": "ninja",
+        "version": "1.13.2"
+      },
+      {
+        "name": "numpy",
+        "version": "2.2.6"
+      },
+      {
+        "name": "opencv-python-headless",
+        "version": "4.12.0.88"
+      },
+      {
+        "name": "packaging",
+        "version": "26.3"
+      },
+      {
+        "name": "pillow",
+        "version": "11.3.0"
+      },
+      {
+        "name": "pyclipper",
+        "version": "1.4.0"
+      },
+      {
+        "name": "python-bidi",
+        "version": "0.6.12"
+      },
+      {
+        "name": "PyYAML",
+        "version": "6.0.3"
+      },
+      {
+        "name": "regex",
+        "version": "2026.9.29"
+      },
+      {
+        "name": "requests",
+        "version": "2.34.2"
+      },
+      {
+        "name": "safetensors",
+        "version": "0.8.0"
+      },
+      {
+        "name": "scikit-image",
+        "version": "0.26.0"
+      },
+      {
+        "name": "scipy",
+        "version": "1.18.1"
+      },
+      {
+        "name": "setuptools",
+        "version": "84.2.1"
+      },
+      {
+        "name": "shapely",
+        "version": "2.2.0"
+      },
+      {
+        "name": "sympy",
+        "version": "1.14.0"
+      },
+      {
+        "name": "tifffile",
+        "version": "2026.10.15"
+      },
+      {
+        "name": "tokenizers",
+        "version": "0.22.2"
+      },
+      {
+        "name": "torch",
+        "version": "2.7.1"
+      },
+      {
+        "name": "torchvision",
+        "version": "0.22.1"
+      },
+      {
+        "name": "tqdm",
+        "version": "4.70.1"
+      },
+      {
+        "name": "transformers",
+        "version": "4.57.6"
+      },
+      {
+        "name": "typing_extensions",
+        "version": "4.16.0"
+      },
+      {
+        "name": "urllib3",
+        "version": "2.8.0"
+      }
+    ]
+  }
+}

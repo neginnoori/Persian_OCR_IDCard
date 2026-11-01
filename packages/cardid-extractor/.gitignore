@@ -1,0 +1,38 @@
+# Python / build outputs
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+build/
+dist/
+
+# Local configuration / credentials
+.env
+.env.*
+!.env.example
+.vscode/
+.idea/
+
+# Downloaded models and local image inputs/results
+model_cache/
+model-cache/
+models/
+cardid-model-cache/
+.cache/
+inputs/
+results/
+cardid-results/
+*.pt
+*.pth
+*.safetensors
+*.ckpt
+*.onnx
+input.jpg
+output.png
+review.png
+
+# OS metadata
+.DS_Store
+Thumbs.db
