@@ -23,3 +23,18 @@ def test_card_with_background_keeps_existing_acceptance():
     _, metrics = quad_from_mask(mask)
     assert metrics['geometry_ok']
     assert metrics['border_status'] == 'clear'
+
+
+def test_tight_crop_with_small_top_and_bottom_margins():
+    mask = np.zeros((515, 800), np.uint8)
+    mask[5:514, :800] = 1
+    _, metrics = quad_from_mask(mask)
+    assert metrics['geometry_ok']
+    assert metrics['border_status'] == 'tight_crop_candidate'
+
+
+def test_near_frame_corners_do_not_accept_low_occupancy_clipped_card():
+    mask = np.zeros((515, 800), np.uint8)
+    mask[50:500, :800] = 1
+    _, metrics = quad_from_mask(mask)
+    assert not metrics['geometry_ok']

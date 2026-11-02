@@ -98,11 +98,10 @@ def quad_from_mask(mask, min_iou=.88):
                   and (quad[:, 1] >= 0).all() and (quad[:, 1] <= height-1).all())
     frame = np.float32([[0, 0], [width-1, 0], [width-1, height-1], [0, height-1]])
     # A tightly cropped, upright card can legitimately occupy the whole image.
-    # Require evidence on all four sides, rather than accepting any border contact.
+    # Rounded corners and a few background pixels need not touch all four borders.
+    # Require all four estimated corners near the frame and high mask occupancy.
     near_frame = bool((np.abs(quad-frame) <= np.float32([.04*width, .04*height])).all())
-    all_sides = bool(component[0].any() and component[-1].any()
-                     and component[:, 0].any() and component[:, -1].any())
-    tight_crop = bool(inside and all_sides and near_frame
+    tight_crop = bool(inside and clipped and near_frame
                       and component.sum()/(width*height) >= .90)
     border_ok = not clipped or tight_crop
     return quad, {'quad_method': method, 'mask_quad_iou': float(iou),
