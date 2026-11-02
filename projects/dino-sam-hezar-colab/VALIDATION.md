@@ -1,20 +1,21 @@
-# Delivery validation
+# Paddle Detection integration validation — 0.2
 
-Branch: `feat/dino-sam-hezar-colab`, based on `feat/cardid-extractor` at `9cd1f1eed5d7f4ae696cf5493e75804eb93362f3`.
+Executed on macOS ARM64 / Python 3.11 using the existing main test environment and a new separate Paddle CPU environment.
 
-Executed on Linux x86_64 / Python 3.11.17:
+## Passed
+- 39 unchanged extraction tests and 27 combined/detection tests. These include protocol-level real subprocess tests, malformed Paddle outputs, BGR input conversion, coordinate preservation, perspective crops, empty results, CRNN-only Hezar loading, worker reuse/error handling, six-field assignment, and existing orchestration regressions. Injected model evidence is used in unit tests.
+- Isolated pinned Paddle environment installed successfully and pip check passed: Paddle CPU 3.2.2, PaddleOCR 3.3.2, PaddleX 3.3.13, NumPy 2.2.6, Pillow 11.3.0, OpenCV contrib 4.10.0.84, huggingface-hub 0.36.2.
+- Real official PP-OCRv5_server_det weights and real Hezar CRNN ran on two already-upright user images on CPU. The persistent worker was reused across images; a white image returned no text detections. Aggregate results are in validation-paddle.json; no user image/text is included in that report.
+- First sample: 16 text regions, six nonempty template fields, one ten-digit numeric region. Second sample: 10 regions, three nonempty fields; some lines combine labels and values. Nonempty does NOT mean correct. No field/character accuracy claim is made.
+- All Python files and notebook cells parsed and notebook schema validated.
 
-- Installed the combined direct dependency profile in a separate environment, using matching torch 2.7.1 / torchvision 0.22.1 **CPU** builds for local testing. Dependency compatibility check passed.
-- Imported Hezar Model, EasyOCR, DINO/SAM model and processor classes, and both local packages together successfully.
-- 13 combined pipeline tests cover accepted-card OCR, the real extractor's geometry connected to the reader using injected model evidence, raw text preservation, uncertain/no-card gating, visible inference errors, empty recognition, crop batching, RTL order, coordinate scaling and isolated output directories.
-- All 34 existing extractor tests pass using injected model evidence.
-- Notebook schema and all notebook Python code cells validate and parse.
-- Source ZIP integrity, included source packages, and installation/import from extracted ZIP are checked separately before delivery.
+## Not executed
+- DINO/SAM extraction and orientation with actual CUDA models in this environment. The first-stage code is unchanged.
+- A full Colab install from a fresh GPU runtime.
+- Optional Paddle GPU 3.2.0 CUDA 12.6 installation/inference. Its official index hostname could not be resolved from the validation host. The documented default uses explicitly selected Paddle CPU 3.2.2 from PyPI, not a silent fallback.
+- An accuracy/performance comparison against CRAFT on a held-out dataset. CPU smoke timings include startup on the first sample and must not be compared as inference benchmarks.
 
-Not executed here:
+## Operational details
+PaddleX requires its OpenCV contrib provider, whereas EasyOCR requires headless OpenCV. Separate virtual environments and a persistent JSON-lines worker prevent installing both providers in one environment. Paddle GPU and Torch CUDA libraries are in different processes; VRAM is still shared. Main-process Hezar only loads CRNN in the Paddle path. CRAFT remains an explicit comparison option. Worker shutdown is available through pipeline.close().
 
-- The CUDA 12.6 installation script in a real Colab runtime.
-- Real-weight GPU DINO/SAM/EasyOCR/Hezar inference or model-download completion. This machine has no exposed NVIDIA GPU and its current network policy blocks Hugging Face.
-- Dataset accuracy, OCR character/word error rate, GPU memory or latency benchmarks.
-
-Passing CPU tests and imports are not a claim that GPU inference or OCR accuracy was verified. The notebook performs a real GPU operation during setup and reports per-image runtime/model errors during processing. First real execution must be checked in Colab.
+The six-field template is a development heuristic for the standard Iranian front-side layout. Missing fields remain empty; no known answer is used to repair text. Tight cropping and ambiguous extraction policies remain separate from OCR confidence.

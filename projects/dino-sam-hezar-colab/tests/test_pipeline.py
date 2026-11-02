@@ -121,7 +121,7 @@ def fake_hezar(tmp_path, boxes, predictions=None):
     def predict(images):
         batches.append(images)
         return predictions if predictions is not None else [{'text': '۱۲۳ ي ك'} for _ in images]
-    reader = HezarReader(tmp_path, device='cpu', batch_size=2)
+    reader = HezarReader(tmp_path, device='cpu', batch_size=2, detector_backend='craft')
     reader.detector, reader.recognizer = detector, SimpleNamespace(predict=predict)
     return reader, batches
 

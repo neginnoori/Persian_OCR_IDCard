@@ -1,0 +1,42 @@
+{
+  "pipeline": "DINO/SAM unchanged -> Paddle detection -> Hezar CRNN -> layout fields",
+  "unit_tests": {
+    "extractor": 39,
+    "combined_and_detection": 27
+  },
+  "paddle_runtime_cpu": "3.2.2",
+  "paddleocr": "3.3.2",
+  "paddlex": "3.3.13",
+  "numpy": "2.2.6",
+  "pillow": "11.3.0",
+  "opencv_worker": "opencv-contrib-python 4.10.0.84",
+  "model": "PP-OCRv5_server_det",
+  "model_revision": "ca867c897ecbca8873081573a802ad70d499cb94",
+  "real_cpu_smoke": {
+    "samples": [
+      {
+        "sample": 0,
+        "regions": 16,
+        "fields_with_values": 6,
+        "numeric_10digit_regions": 1,
+        "seconds": 5.87
+      },
+      {
+        "sample": 1,
+        "regions": 10,
+        "fields_with_values": 3,
+        "numeric_10digit_regions": 0,
+        "seconds": 2.932
+      }
+    ],
+    "persistent_worker_reused": true,
+    "blank_image_empty": true,
+    "extraction_tested": false,
+    "accuracy_evaluated": false
+  },
+  "gpu_full_pipeline_tested": false,
+  "colab_installation_tested": false,
+  "accuracy_benchmark_performed": false,
+  "source_zip_install_import": "passed without heavyweight dependency reinstall",
+  "notebook_schema": "passed"
+}

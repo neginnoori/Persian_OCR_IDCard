@@ -1,43 +1,50 @@
-# استخراج کارت با DINO/SAM و OCR فارسی با هزار
+# استخراج کارت و تشخیص متن با PaddleOCR + خواندن فارسی با Hezar — نسخه ۰٫۲
 
-این پروژه عکس کارت را با DINO و SAM استخراج و پرسپکتیو آن را اصلاح می‌کند. EasyOCR فقط برای تشخیص جهت کارت استفاده می‌شود. متن نهایی با مدل‌های CRAFT و CRNN فارسی **هزار (Hezar)** خوانده می‌شود.
+مسیر پیش‌فرض:
+DINO + SAM → هندسه و جهت قبلی → PP-OCRv5_server_det → Hezar CRNN → شش فیلد.
+EasyOCR فقط برای تعیین جهت در استخراج باقی است. Hezar CRAFT در مسیر پیش‌فرض لود نمی‌شود.
 
-## اجرا در Google Colab
+## اجرای Colab
+۱. ZIP تازه مخزن را دانلود کنید یا ZIP مستقل پروژه را بسازید.
+۲. DINO_SAM_Hezar_Colab.ipynb را در Colab باز و T4 GPU را فعال کنید.
+۳. سلول اول هر دو نوع ZIP را می‌پذیرد. سلول نصب را اجرا کنید؛ دو محیط مستقل ساخته می‌شود.
+۴. عکس‌ها را آپلود و پردازش را اجرا کنید. جدول شش‌ردیفی و خروجی‌های تصویری/JSON/CSV در بخش نمایش هستند.
 
-۱. فایل ZIP پروژه را روی کامپیوتر از حالت فشرده خارج کنید.
+PADDLE_DEVICE پیش‌فرض cpu است؛ فقط مدل تشخیص متن روی CPU است. DINO/SAM، EasyOCR و Hezar روی GPU باقی می‌مانند. این انتخاب صریح برای نصب قابل‌اتکاتر بدون تداخل CUDA است و fallback پنهان نیست. gpu:0 گزینه نصب اختیاری Paddle CUDA 12.6 است؛ درایور مناسب و دسترسی به مخزن رسمی لازم دارد و در این محیط تست نشده است.
 
-۲. در سایت Colab از **File → Upload notebook** فایل `DINO_SAM_Hezar_Colab.ipynb` را باز کنید.
+TEXT_DETECTOR پیش‌فرض paddle است. برای مقایسه با مسیر قبلی craft را انتخاب کنید.
+وزن Paddle با نام و revision ثابت دانلود می‌شود. جهت و سیاست هندسی استخراج تغییر نکرده است؛ needs_review همچنان قبل از OCR متوقف می‌شود.
 
-۳. از **Runtime → Change runtime type** یک GPU مثل **T4** انتخاب کنید.
+## جداسازی محیط‌ها
+اسکریپت نصب محیط Torch/Hezar و محیط Paddle را جدا نگه می‌دارد؛ اولی opencv-python-headless و دومی opencv-contrib-python دارد. دو توزیع cv2 نباید در یک محیط نصب شوند. worker مدل Paddle را یک بار لود می‌کند و عکس‌ها را از pipe حافظه‌ای می‌گیرد؛ عکس برای سرویس بیرونی ارسال نمی‌شود. JSON فقط مختصات/امتیاز را برمی‌گرداند. timeout و خطای مدل صریح‌اند؛ OCR جایگزین خودکار نمی‌شود. بعد از استفاده pipeline.close() را صدا بزنید؛ پایان پردازش هم worker را متوقف می‌کند.
 
-۴. سلول‌ها را به ترتیب اجرا کنید. در آپلود اول، همان **ZIP اصلی پروژه** را انتخاب کنید. نصب در محیط مجازی جداگانه انجام می‌شود و بسته‌های یادگیری ماشین محیط اصلی Colab تغییر نمی‌کنند.
-
-۵. در آپلود دوم، عکس‌های کارت را انتخاب کنید. اجرای اول برای دانلود وزن مدل‌ها زمان می‌برد.
-
-۶. خروجی شامل عکس کارت، کادرهای متن، متن خام، متن نرمال‌شده و گزارش JSON است. در پایان ZIP نتایج دانلود می‌شود.
-
-## استفاده از تابع استخراج در پروژه خودتان
-
-```python
-from cardid import CardExtractor
-extractor = CardExtractor()
-card = extractor.extract("photo.jpg")
-```
-
-خروجی `card` یک تصویر PIL با رنگ RGB و اندازهٔ ۸۵۶×۵۴۰ است. این تابع در صورت نامطمئن بودن کارت خطا می‌دهد تا تصویر نامعتبر خودکار وارد OCR نشود. برای دیدن وضعیت و تصویر پیشنهادی از `extractor.extract_result(...)` استفاده کنید.
-
-## استخراج و OCR با هم
-
+## API
 ```python
 from persian_id_ocr import PersianCardOCR
-pipeline = PersianCardOCR(cache_dir="./models")
-result = pipeline.process("photo.jpg")
-print(result.status)
-print(result.text)
+pipeline = PersianCardOCR(cache_dir='./models')
+try:
+    result = pipeline.process('card.jpg')
+    print(result.text)
+    print(result.to_dataframe())
+finally:
+    pipeline.close()
 ```
 
-وضعیت `ocr_candidate` به معنی متن پیشنهادی است، نه تأیید صحت. در وضعیت `needs_review` یا `not_found` مرحلهٔ هزار اجرا نمی‌شود. استخراج مدل‌ها به GPU نیاز دارد. برای خواندن کارت آماده، `HezarReader` روی CPU نیز قابل استفاده است.
+مسیر worker از فایل paddle-worker.json داخل محیط اصلی پیدا می‌شود. در نصب سفارشی PERSIAN_PADDLE_PYTHON را به Python محیط مستقل Paddle تنظیم کنید.
 
-نام شش فیلد هویتی در این پروژه استخراج نمی‌شود و هیچ رقمی با حدس اصلاح نمی‌شود. عکس‌های آپلودشده در محیط Colab پردازش می‌شوند؛ نوت‌بوک دارای خروجی اطلاعات شخصی را عمومی نکنید. فایل‌های Colab موقت هستند، پس نتایج را دانلود کنید.
+## خروجی‌ها و محدوده اعتبار
+regions شامل box، source_polygons، detection_scores، روش برش و متن خام/نرمال‌شده است؛ مختصات همگی به کارت صاف‌شده مربوط‌اند. چندضلعی تک‌ناحیه‌ای با پرسپکتیو صاف و حاشیه زمینه آماده CRNN می‌شود. اتصال قطعه‌های CRAFT برای Paddle خاموش است تا عنوان و مقدار ناخواسته یکی نشوند.
 
-توضیحات فنی، وضعیت آزمون‌ها و محدودیت‌ها در `README.md` و `VALIDATION.md` آمده است. اجرای واقعی مدل‌ها و ارزیابی دقت باید روی GPU و عکس‌های خودتان انجام شود.
+fields.csv همیشه شش ردیف دارد: national_id، first_name، last_name، date_of_birth، father_name، expiry_date. مقدار ناموجود خالی می‌ماند. انتساب بر اساس قالب مکانی کارت استاندارد است، نه مدل آموزش‌دیده. اگر Paddle یک کادر شامل عنوان و مقدار بدهد، ممکن است فیلد missing شود؛ هیچ متنی با پاسخ CSV یا حدس تصحیح نمی‌شود. candidate تأیید صحت نیست.
+
+روی دو کارت صاف‌شده کاربر و یک تصویر سفید با وزن‌های واقعی Paddle و Hezar روی CPU آزمایش شده است. این تست شامل DINO/SAM یا اجرای کامل CUDA نبوده و بهتر بودن از CRAFT را ثابت نمی‌کند. جزئیات در VALIDATION.md است.
+
+## بسته مستقل
+```bash
+python scripts/build_zip.py --output dist/dino-sam-hezar-colab.zip
+```
+
+## منابع
+- https://github.com/PaddlePaddle/PaddleOCR/blob/v3.3.2/docs/version3.x/module_usage/text_detection.en.md
+- https://huggingface.co/PaddlePaddle/PP-OCRv5_server_det
+- https://huggingface.co/hezarai/crnn-base-fa-v2

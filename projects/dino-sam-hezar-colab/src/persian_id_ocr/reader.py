@@ -1,4 +1,4 @@
-"""Read an already upright RGB card with Hezar CRAFT + Persian CRNN."""
+"""Detect text with PaddleOCR; read crops with Hezar CRNN."""
 from pathlib import Path
 from threading import RLock
 import math
@@ -56,11 +56,15 @@ class HezarReader:
     Headless OpenCV is installed explicitly rather than hezar[vision], which would
     install a second conflicting cv2 distribution alongside EasyOCR's dependency.
     """
-    def __init__(self, cache_dir, device='cuda', batch_size=8):
+    def __init__(self, cache_dir, device='cuda', batch_size=8, *, detector_backend='paddle', detector_device=None):
         if device not in ('cuda', 'cuda:0', 'cpu'):
             raise ValueError('device must be cuda, cuda:0, or cpu')
         if not isinstance(batch_size, int) or isinstance(batch_size, bool) or batch_size < 1:
             raise ValueError('batch_size must be a positive integer')
+        if detector_backend not in ('paddle', 'craft'):
+            raise ValueError('detector_backend must be paddle or craft')
+        self.detector_backend = detector_backend
+        self.detector_device = detector_device
         self.cache_dir, self.device = Path(cache_dir), device
         self.batch_size = batch_size
         self.detector = self.recognizer = None
@@ -75,13 +79,16 @@ class HezarReader:
             if self.device.startswith('cuda') and not torch.cuda.is_available():
                 raise RuntimeError('Hezar CUDA requested but no CUDA GPU is available')
             self.cache_dir.mkdir(parents=True, exist_ok=True)
-            detector = Model.load('hezarai/CRAFT', device=self.device, cache_dir=str(self.cache_dir))
+            if self.detector_backend == 'paddle':
+                from .paddle_client import PaddleWorkerDetector
+                detector = PaddleWorkerDetector(self.cache_dir/'paddle', device=self.detector_device).load()
+            else:
+                detector = Model.load('hezarai/CRAFT', device=self.device, cache_dir=str(self.cache_dir))
+                detector.eval()
+                detector.preprocessor.image_processor.config.square_size = 2560
+                detector.preprocessor.image_processor.config.mag_ratio = 1.0
             recognizer = Model.load('hezarai/crnn-base-fa-v2', device=self.device, cache_dir=str(self.cache_dir))
-            detector.eval()
             recognizer.eval()
-            # Hezar 1.0.0 coordinate adjustment is reliable here when ratio == 1.
-            detector.preprocessor.image_processor.config.square_size = 2560
-            detector.preprocessor.image_processor.config.mag_ratio = 1.0
             self.detector, self.recognizer = detector, recognizer
         return self
 
@@ -92,36 +99,56 @@ class HezarReader:
         with self._lock:
             self.load()
             import torch
-            scale = min(1., 1280 / max(card.size))
-            small = card.resize((max(1, round(card.width * scale)), max(1, round(card.height * scale))), Image.Resampling.LANCZOS)
-            ratio = self.detector.preprocessor.image_processor.get_ratio(np.asarray(small))
-            if abs(ratio - 1.) > 1e-6:
-                raise RuntimeError(f'Unexpected CRAFT resize ratio: {ratio}')
-            with torch.inference_mode():
-                detections = self.detector.predict(small)
-            if len(detections) != 1:
-                raise RuntimeError('CRAFT did not return one detection result')
             regions, crops, boxes = [], [], []
-            sx, sy = card.width / small.width, card.height / small.height
-            for box in detections[0]['boxes']:
-                if len(box) != 4 or not np.isfinite(box).all():
-                    raise RuntimeError('CRAFT returned an invalid box')
-                x, y, w, h = map(float, box)
-                if w <= 0 or h <= 0:
-                    continue
-                x1, y1 = max(0, math.floor(x * sx)), max(0, math.floor(y * sy))
-                x2, y2 = min(card.width, math.ceil((x + w) * sx)), min(card.height, math.ceil((y + h) * sy))
-                if x2 <= x1 or y2 <= y1:
-                    continue
-                boxes.append([x1, y1, x2, y2])
-            for group in merge_fragments(boxes):
+            detected = []
+            if self.detector_backend == 'paddle':
+                detected = self.detector.detect(card)
+                boxes = [item['box'] for item in detected]
+            else:
+                scale = min(1., 1280 / max(card.size))
+                small = card.resize((max(1, round(card.width * scale)), max(1, round(card.height * scale))), Image.Resampling.LANCZOS)
+                ratio = self.detector.preprocessor.image_processor.get_ratio(np.asarray(small))
+                if abs(ratio - 1.) > 1e-6:
+                    raise RuntimeError(f'Unexpected CRAFT resize ratio: {ratio}')
+                with torch.inference_mode():
+                    detections = self.detector.predict(small)
+                if len(detections) != 1:
+                    raise RuntimeError('CRAFT did not return one detection result')
+                sx, sy = card.width / small.width, card.height / small.height
+                for box in detections[0]['boxes']:
+                    if len(box) != 4 or not np.isfinite(box).all():
+                        raise RuntimeError('CRAFT returned an invalid box')
+                    x, y, w, h = map(float, box)
+                    if w <= 0 or h <= 0:
+                        continue
+                    x1, y1 = max(0, math.floor(x * sx)), max(0, math.floor(y * sy))
+                    x2, y2 = min(card.width, math.ceil((x + w) * sx)), min(card.height, math.ceil((y + h) * sy))
+                    if x2 <= x1 or y2 <= y1:
+                        continue
+                    boxes.append([x1, y1, x2, y2])
+            groups = ([{'box': d['box'], 'source_boxes': [d['box']]} for d in detected]
+                      if self.detector_backend == 'paddle' else merge_fragments(boxes))
+            for group in groups:
                 x1, y1, x2, y2 = group['box']
                 height = y2 - y1
                 px, py = max(8, round(.20 * height)), max(8, round(.30 * height))
                 crop_box = [max(0, x1-px), max(0, y1-py), min(card.width, x2+px), min(card.height, y2+py)]
                 regions.append({'box': [x1, y1, x2, y2], 'crop_box': crop_box,
                                 'source_boxes': group['source_boxes']})
-                crops.append(card.crop(crop_box))
+                if self.detector_backend == 'paddle':
+                    from .detection import crop_polygon
+                    sources = [d for d in detected if d['box'] in group['source_boxes']]
+                    regions[-1].update(source_polygons=[d['polygon'] for d in sources],
+                                       detection_scores=[d['detection_score'] for d in sources])
+                    if len(sources) == 1:
+                        regions[-1]['recognition_crop_method'] = 'perspective_polygon_with_padding'
+                        crops.append(crop_polygon(card, sources[0]['polygon']))
+                    else:
+                        regions[-1]['recognition_crop_method'] = 'merged_axis_aligned_with_margin'
+                        crops.append(card.crop(crop_box))
+                else:
+                    regions[-1]['recognition_crop_method'] = 'axis_aligned_with_margin'
+                    crops.append(card.crop(crop_box))
             for start in range(0, len(crops), self.batch_size):
                 batch = crops[start:start+self.batch_size]
                 with torch.inference_mode():
@@ -132,4 +159,9 @@ class HezarReader:
                     raw = str(prediction['text'])
                     region.update(text_raw=raw, text=normalize_text(raw))
             return reading_order(regions)
+
+    def close(self):
+        with self._lock:
+            if self.detector is not None and hasattr(self.detector, 'close'):
+                self.detector.close()
 

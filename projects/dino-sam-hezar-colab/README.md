@@ -1,75 +1,33 @@
-# DINO/SAM + Hezar Persian OCR — Colab project
+# DINO/SAM → PaddleOCR detection → Hezar CRNN → six fields
 
-**[راهنمای فارسی](README.fa.md)**
+Version 0.2 adds PP-OCRv5_server_det as the default detector. Hezar loads only the Persian CRNN recognizer. EasyOCR still supplies the existing extraction orientation evidence. Geometry and orientation review gates are unchanged.
 
-Input photo → Grounding DINO + SAM → perspective-corrected, upright 856×540 RGB card → Hezar CRAFT text detection → Hezar Persian CRNN recognition.
+See [Persian instructions](README.fa.md), [validation](VALIDATION.md), and the included Colab notebook.
 
-EasyOCR is retained only for the existing extractor's orientation decision. Final Persian text comes from Hezar (`hezarai/CRAFT`, `hezarai/crnn-base-fa-v2`). No DocAligner, Kaggle download, or manual six-field template is used in this project.
+Run the Colab notebook with a T4 GPU. Upload either the complete repository ZIP or the source ZIP produced by scripts/build_zip.py. The setup creates separate Torch/Hezar and Paddle environments to avoid conflicting OpenCV providers and mixing CUDA libraries in one process. Paddle detection explicitly defaults to CPU; extraction and Hezar remain on GPU. Optional Paddle gpu:0 uses the official CUDA 12.6 index and has not been tested here. No silent device fallback is performed.
 
-## Open in Google Colab
+The persistent Paddle worker receives PNG pixels through local pipes and returns JSON polygons/scores. It loads detection only, validates its result shape, preserves original card coordinates, and has startup/request timeouts and explicit shutdown. Call pipeline.close() after use. No external image-upload service is used. Model downloads need network on first run.
 
-1. Unzip `dino-sam-hezar-colab.zip` on your computer.
-2. At https://colab.research.google.com choose **File → Upload notebook** and select `DINO_SAM_Hezar_Colab.ipynb` from the extracted folder.
-3. Choose **Runtime → Change runtime type → T4 GPU** (or another NVIDIA GPU).
-4. Run the notebook cells in order. The first upload asks for the **original project ZIP**. The later upload asks for your card photos.
-5. Wait for installation and the initial model downloads. The notebook displays extracted cards, OCR boxes and text, and downloads a results ZIP. JSON reports distinguish `ocr_candidate`, `no_text`, `needs_review`, `not_found` and `error`.
+TEXT_DETECTOR='craft' retains the earlier detector for comparisons. Default Paddle uses perspective text-line crops with background padding; its boxes are not merged by the CRAFT fragment rule. Polygons and scores are kept in regions metadata.
 
-The notebook runs the code using `/content/persian-id-venv/bin/python` in a subprocess. Colab's kernel remains separate. All photos in one run share model instances; rerunning the processing cell starts a fresh process and reloads models. Uploaded photos are processed in the Colab runtime; model providers receive download requests, not your photos. Colab runtime storage is temporary. Do not share a notebook with retained personal-card outputs.
+The API offers result.to_dataframe(), always assigning six named fields for processed/reviewed inputs. The standard-front-layout field template is heuristic: missing values stay empty, and label/value combined detections may remain unassigned. Do not treat candidate or format validation as correctness. No six-field accuracy benchmark is claimed.
 
-## Reuse extraction in your own project
-
-Install the delivered local extractor and this package in the same isolated environment (the setup script does this). Neither package needs to be published to PyPI.
-
-```python
-from cardid import CardExtractor
-
-extractor = CardExtractor()  # create once per worker/process
-card = extractor.extract("photo.jpg")  # upright PIL RGB image
-# Pass `card` into any OCR implementation. No automatic image writes.
-```
-
-To use Hezar as well:
-
+## API
 ```python
 from persian_id_ocr import PersianCardOCR
-
-pipeline = PersianCardOCR(cache_dir="./models")
-result = pipeline.process("photo.jpg")
-if result.status == "ocr_candidate":
-    print(result.text)              # raw recognized text, in reading order
-    print(result.text_normalized)   # digit and Arabic/Persian letter normalization
-    card = result.image
-    report = result.to_dict()       # JSON-safe, no image pixels
-else:
-    print(result.status, result.metadata)
+engine = PersianCardOCR('./models')
+try:
+    result = engine.process('card.jpg')
+    print(result.text)
+    print(result.to_dataframe())
+finally:
+    engine.close()
 ```
 
-Reading order groups nearby lines and sorts each line right to left; plain text uses one recognized region per line. Region `box` and padded `crop_box` coordinates refer to the extracted card. The extraction report separately includes homographies and source corners relative to the EXIF-corrected input. No field values are guessed or corrected against a database. OCR candidates always require review.
+A custom installation may set PERSIAN_PADDLE_PYTHON to the separate detection environment's Python. Use requirements-colab.txt only in the Torch environment and requirements-paddle.txt only in the Paddle environment. Runtime CPU Paddle 3.2.2 or optional CUDA Paddle 3.2.0 is installed separately by setup_colab.py. The requirements pin direct dependencies, not the entire transitive dependency graph.
 
-For an already extracted, upright card:
-
-```python
-from persian_id_ocr import HezarReader
-reader = HezarReader("./models/hezar", device="cuda")
-regions = reader.read(card)
+## Portable source ZIP
+```bash
+python scripts/build_zip.py --output dist/dino-sam-hezar-colab.zip
 ```
-
-`HezarReader` also supports CPU; DINO/SAM extraction requires CUDA. `orientation_override=0/90/180/270` on `pipeline.process()` has the extractor's cyclic-corner meaning, not a raw-photo rotation. It resolves orientation only; it does not accept unreliable geometry. Uncertain extractions skip Hezar and return a review candidate when available.
-
-## Environment / validation
-
-Python 3.11–3.13, Linux, compatible NVIDIA driver for PyTorch CUDA 12.6. Direct versions are in `requirements-colab.txt`; transitive dependencies are resolved at install time. Headless OpenCV is installed once; `hezar` is installed without its vision extra to avoid a second cv2 distribution. Do not install this profile into the repository's original `.venv`.
-
-From a repository checkout: `python projects/dino-sam-hezar-colab/scripts/setup_colab.py`. From the project ZIP: `python scripts/setup_colab.py`. Install `[dev]` and run `python -m pytest` in each package for unit tests. Use `scripts/build_zip.py` from the repository to regenerate the portable ZIP.
-
-Real CUDA/model execution and OCR accuracy require a Colab GPU run. CPU tests with injected evidence validate control flow, input handling, crop batching and output isolation; they do not establish learned-model accuracy. See `VALIDATION.md` for this delivery's executed checks.
-
-## Model sources
-
-- https://huggingface.co/IDEA-Research/grounding-dino-tiny
-- https://huggingface.co/facebook/sam-vit-base
-- https://github.com/JaidedAI/EasyOCR
-- https://huggingface.co/hezarai/CRAFT
-- https://huggingface.co/hezarai/crnn-base-fa-v2
-
-Weights are downloaded separately, use upstream default revisions, and are not bundled. Model providers' terms apply separately. The repository MIT license is included in the ZIP.
+The archive includes the local cardid-extractor package, setup scripts and notebook, not model weights or user images.
