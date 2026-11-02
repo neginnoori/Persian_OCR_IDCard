@@ -87,6 +87,26 @@ def test_no_text_has_explicit_status():
     assert PersianCardOCR(extractor=Extractor(), reader=reader).process('photo.jpg').status == 'no_text'
 
 
+def test_tight_crop_geometry_reaches_hezar(monkeypatch):
+    import cardid.extractor as implementation
+    from cardid import CardExtractor
+    from cardid.backend import Detection
+    class Backend:
+        info = {'device': 'injected-test-backend'}
+        reader = face_detector = None
+        def __init__(self, config):
+            pass
+        def detect_masks(self, pil):
+            return Detection([np.ones((540, 856), np.uint8)], [.95], .9)
+    monkeypatch.setattr(implementation, 'TorchBackend', Backend)
+    reader = Reader()
+    result = PersianCardOCR(extractor=CardExtractor(), reader=reader).process(
+        Image.new('RGB', (856, 540)), orientation_override=0)
+    assert result.status == 'ocr_candidate'
+    assert reader.calls == 1
+    assert result.metadata['extraction']['metadata']['border_status'] == 'tight_crop_candidate'
+
+
 def test_empty_recognized_strings_are_not_ocr_candidates():
     reader = SimpleNamespace(read=lambda card: [{'text_raw': ' ', 'text': ''}])
     assert PersianCardOCR(extractor=Extractor(), reader=reader).process('photo.jpg').status == 'no_text'
@@ -156,3 +176,4 @@ def test_batch_results_are_isolated_and_errors_are_reported(tmp_path):
     run3, summary3 = worker.run_batch(['bad.jpg'], tmp_path, tmp_path, pipeline=Broken())
     report = json.loads((run3/summary3[0]['folder']/'result.json').read_text())
     assert report['status'] == 'error' and 'model unavailable' in report['error']
+

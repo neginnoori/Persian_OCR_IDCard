@@ -96,9 +96,19 @@ def quad_from_mask(mask, min_iou=.88):
     clipped = bool(component[0].any() or component[-1].any() or component[:, 0].any() or component[:, -1].any())
     inside = bool((quad[:, 0] >= 0).all() and (quad[:, 0] <= width-1).all()
                   and (quad[:, 1] >= 0).all() and (quad[:, 1] <= height-1).all())
+    frame = np.float32([[0, 0], [width-1, 0], [width-1, height-1], [0, height-1]])
+    # A tightly cropped, upright card can legitimately occupy the whole image.
+    # Require evidence on all four sides, rather than accepting any border contact.
+    near_frame = bool((np.abs(quad-frame) <= np.float32([.04*width, .04*height])).all())
+    all_sides = bool(component[0].any() and component[-1].any()
+                     and component[:, 0].any() and component[:, -1].any())
+    tight_crop = bool(inside and all_sides and near_frame
+                      and component.sum()/(width*height) >= .90)
+    border_ok = not clipped or tight_crop
     return quad, {'quad_method': method, 'mask_quad_iou': float(iou),
                   'mask_coverage': float(coverage), 'touches_image_border': clipped,
-                  'geometry_ok': bool(iou >= min_iou and coverage >= .97 and inside and not clipped)}
+                  'border_status': 'tight_crop_candidate' if tight_crop else ('clipped_or_uncertain' if clipped else 'clear'),
+                  'geometry_ok': bool(iou >= min_iou and coverage >= .97 and inside and border_ok)}
 
 
 def warp_candidates(img, quad, width=856, height=540):
@@ -192,3 +202,4 @@ def rectify_card(img, quad, reader=None, face_detector=None, override=None, widt
         raise ValueError('An orientation reader or manual override is required')
     chosen, metadata = choose_orientation(candidates, reader, face_detector, override)
     return chosen['card'], chosen['H'], chosen['quad'], metadata
+
