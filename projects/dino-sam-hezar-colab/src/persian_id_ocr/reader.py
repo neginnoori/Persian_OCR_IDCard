@@ -26,6 +26,30 @@ def reading_order(regions):
     return [item for row in lines for item in sorted(row['items'], key=lambda r: -r['box'][0])]
 
 
+def merge_fragments(boxes):
+    """Join close, aligned fragments before recognition; preserve distant columns."""
+    groups = [{'box': list(box), 'source_boxes': [list(box)]} for box in boxes]
+    changed = True
+    while changed:
+        changed = False
+        for i, first in enumerate(groups):
+            a = first['box']
+            for j in range(i+1, len(groups)):
+                b = groups[j]['box']
+                ah, bh = a[3]-a[1], b[3]-b[1]
+                overlap = max(0, min(a[3], b[3])-max(a[1], b[1]))
+                gap = max(0, max(a[0], b[0])-min(a[2], b[2]))
+                if overlap/min(ah, bh) >= .65 and gap <= .65*min(ah, bh):
+                    first['box'] = [min(a[0], b[0]), min(a[1], b[1]), max(a[2], b[2]), max(a[3], b[3])]
+                    first['source_boxes'].extend(groups[j]['source_boxes'])
+                    groups.pop(j)
+                    changed = True
+                    break
+            if changed:
+                break
+    return groups
+
+
 class HezarReader:
     """Reuse one instance; CUDA for Colab, or CPU for reading pre-extracted cards.
 
@@ -77,7 +101,7 @@ class HezarReader:
                 detections = self.detector.predict(small)
             if len(detections) != 1:
                 raise RuntimeError('CRAFT did not return one detection result')
-            regions, crops = [], []
+            regions, crops, boxes = [], [], []
             sx, sy = card.width / small.width, card.height / small.height
             for box in detections[0]['boxes']:
                 if len(box) != 4 or not np.isfinite(box).all():
@@ -89,10 +113,14 @@ class HezarReader:
                 x2, y2 = min(card.width, math.ceil((x + w) * sx)), min(card.height, math.ceil((y + h) * sy))
                 if x2 <= x1 or y2 <= y1:
                     continue
+                boxes.append([x1, y1, x2, y2])
+            for group in merge_fragments(boxes):
+                x1, y1, x2, y2 = group['box']
                 height = y2 - y1
                 px, py = max(8, round(.20 * height)), max(8, round(.30 * height))
                 crop_box = [max(0, x1-px), max(0, y1-py), min(card.width, x2+px), min(card.height, y2+py)]
-                regions.append({'box': [x1, y1, x2, y2], 'crop_box': crop_box})
+                regions.append({'box': [x1, y1, x2, y2], 'crop_box': crop_box,
+                                'source_boxes': group['source_boxes']})
                 crops.append(card.crop(crop_box))
             for start in range(0, len(crops), self.batch_size):
                 batch = crops[start:start+self.batch_size]
@@ -104,3 +132,4 @@ class HezarReader:
                     raw = str(prediction['text'])
                     region.update(text_raw=raw, text=normalize_text(raw))
             return reading_order(regions)
+

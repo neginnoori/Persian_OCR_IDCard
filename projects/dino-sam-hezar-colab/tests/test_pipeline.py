@@ -146,6 +146,20 @@ def test_empty_boxes_skip_recognizer(tmp_path):
     assert reader.read(Image.new('RGB', (856, 540))) == [] and not batches
 
 
+def test_split_national_id_is_recognized_as_one_crop(tmp_path):
+    reader, batches = fake_hezar(tmp_path, [[487,131,76,31], [563,131,121,31], [715,133,129,30]])
+    regions = reader.read(Image.new('RGB', (856, 540)))
+    merged = next(r for r in regions if len(r['source_boxes']) == 2)
+    assert merged['box'] == [487,131,684,162]
+    assert len(regions) == 2  # label is still separate
+    assert sum(len(batch) for batch in batches) == 2
+
+
+def test_adjacent_different_rows_do_not_merge(tmp_path):
+    reader, _ = fake_hezar(tmp_path, [[10,10,40,20], [12,45,40,20]])
+    assert len(reader.read(Image.new('RGB',(200,100)))) == 2
+
+
 def test_mismatched_recognizer_output_is_error(tmp_path):
     reader, _ = fake_hezar(tmp_path, [[10, 10, 40, 20]], predictions=[])
     with pytest.raises(RuntimeError, match='count'):
