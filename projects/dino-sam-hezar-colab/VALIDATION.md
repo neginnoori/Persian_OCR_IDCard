@@ -19,3 +19,8 @@ Executed on macOS ARM64 / Python 3.11 using the existing main test environment a
 PaddleX requires its OpenCV contrib provider, whereas EasyOCR requires headless OpenCV. Separate virtual environments and a persistent JSON-lines worker prevent installing both providers in one environment. Paddle GPU and Torch CUDA libraries are in different processes; VRAM is still shared. Main-process Hezar only loads CRNN in the Paddle path. CRAFT remains an explicit comparison option. Worker shutdown is available through pipeline.close().
 
 The six-field template is a development heuristic for the standard Iranian front-side layout. Missing fields remain empty; no known answer is used to repair text. Tight cropping and ambiguous extraction policies remain separate from OCR confidence.
+
+## Geometry candidate-selection regression (2026-11-03)
+A supplied Colab report showed a refined corner 2.75 pixels beyond the last image row despite good IoU/coverage and clear mask borders. Selection now ranks candidates passing all existing geometry gates before numeric IoU. No corners are clamped and no quality thresholds are relaxed. If none pass, review remains required. Tests cover both valid in-frame alternatives and inadequate alternatives. 41 extraction + 27 combined tests passed.
+
+Real Paddle/Hezar CPU OCR also ran on the supplied already-rectified card 948 image: 13 text regions and five nonempty template fields. No ten-digit-only numeric region was produced. This is not a successful six-field accuracy result. The exact original SAM mask was not supplied and the original CUDA extraction was not rerun locally; the end-to-end image 948 result must be retried in Colab.

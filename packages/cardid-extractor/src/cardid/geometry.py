@@ -91,23 +91,37 @@ def quad_from_mask(mask, min_iou=.88):
             candidates.append((iou, coverage, variant, method))
     if not candidates:
         raise ValueError('Four reliable card edges could not be recovered')
-    iou, coverage, quad, method = max(candidates, key=lambda x: x[0])
     height, width = mask.shape
     clipped = bool(component[0].any() or component[-1].any() or component[:, 0].any() or component[:, -1].any())
-    inside = bool((quad[:, 0] >= 0).all() and (quad[:, 0] <= width-1).all()
-                  and (quad[:, 1] >= 0).all() and (quad[:, 1] <= height-1).all())
     frame = np.float32([[0, 0], [width-1, 0], [width-1, height-1], [0, height-1]])
-    # A tightly cropped, upright card can legitimately occupy the whole image.
-    # Rounded corners and a few background pixels need not touch all four borders.
-    # Require all four estimated corners near the frame and high mask occupancy.
-    near_frame = bool((np.abs(quad-frame) <= np.float32([.04*width, .04*height])).all())
-    tight_crop = bool(inside and clipped and near_frame
-                      and component.sum()/(width*height) >= .90)
-    border_ok = not clipped or tight_crop
+
+    def assess(candidate):
+        iou, coverage, quad, _ = candidate
+        inside = bool((quad[:, 0] >= 0).all() and (quad[:, 0] <= width-1).all()
+                      and (quad[:, 1] >= 0).all() and (quad[:, 1] <= height-1).all())
+        near_frame = bool((np.abs(quad-frame) <= np.float32([.04*width, .04*height])).all())
+        tight_crop = bool(inside and clipped and near_frame
+                          and component.sum()/(width*height) >= .90)
+        border_ok = not clipped or tight_crop
+        ok = bool(iou >= min_iou and coverage >= .97 and inside and border_ok)
+        return ok, inside, tight_crop, border_ok
+
+    # A better numeric IoU must not displace an adequate, valid in-frame quad.
+    # If no valid candidate exists, retain the best diagnostic candidate for review.
+    selected = max(candidates, key=lambda candidate: (assess(candidate)[0], candidate[0]))
+    iou, coverage, quad, method = selected
+    ok, inside, tight_crop, border_ok = assess(selected)
+    failures = []
+    if not inside: failures.append('corners_outside_image')
+    if iou < min_iou: failures.append('low_mask_quad_iou')
+    if coverage < .97: failures.append('low_mask_coverage')
+    if not border_ok: failures.append('clipped_or_uncertain_border')
     return quad, {'quad_method': method, 'mask_quad_iou': float(iou),
                   'mask_coverage': float(coverage), 'touches_image_border': clipped,
                   'border_status': 'tight_crop_candidate' if tight_crop else ('clipped_or_uncertain' if clipped else 'clear'),
-                  'geometry_ok': bool(iou >= min_iou and coverage >= .97 and inside and border_ok)}
+                  'geometry_ok': ok, 'corners_inside_image': inside,
+                  'geometry_failure_reasons': failures, 'candidate_count': len(candidates),
+                  'candidate_selection': 'valid_geometry_first_then_iou'}
 
 
 def warp_candidates(img, quad, width=856, height=540):
