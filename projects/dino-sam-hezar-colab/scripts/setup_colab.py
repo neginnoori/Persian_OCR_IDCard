@@ -31,6 +31,9 @@ def main():
     pip('install', '--upgrade', 'pip')
     pip('install', 'torch==2.7.1', 'torchvision==0.22.1', '--index-url', 'https://download.pytorch.org/whl/cu126')
     pip('install', '-r', str(project/'requirements-colab.txt'), str(extractor), str(project))
+    # Reinstall local packages even when their version numbers have not changed.
+    pip('install', '--force-reinstall', '--no-deps', str(extractor), str(project))
+    subprocess.run([python, str(project/'scripts/verify_install.py'), str(project)], check=True)
     pip('check')
     # PaddleX needs opencv-contrib while EasyOCR needs headless cv2. Separate venvs
     # prevent competing cv2 distributions and separate Torch/Paddle CUDA libraries.

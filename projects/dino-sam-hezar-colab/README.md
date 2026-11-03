@@ -31,3 +31,7 @@ A custom installation may set PERSIAN_PADDLE_PYTHON to the separate detection en
 python scripts/build_zip.py --output dist/dino-sam-hezar-colab.zip
 ```
 The archive includes the local cardid-extractor package, setup scripts and notebook, not model weights or user images.
+
+
+## Colab: synchronized source and installed code
+Open `DINO_SAM_Hezar_Colab.ipynb` from this branch and run cells in order with a T4 runtime. The first cell resolves the branch to a commit and downloads that exact source; no project ZIP or manual geometry patch is needed. Installation force-reinstalls both local packages. Before processing, `verify_install.py` compares every source module with the installed file and stops on stale code. The result ZIP records the source commit in `source_version.json`. To update an existing session, rerun source download and installation before processing. GPU inference accuracy must still be checked on real images; source verification is not an OCR accuracy check.
