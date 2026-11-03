@@ -24,3 +24,8 @@ The six-field template is a development heuristic for the standard Iranian front
 A supplied Colab report showed a refined corner 2.75 pixels beyond the last image row despite good IoU/coverage and clear mask borders. Selection now ranks candidates passing all existing geometry gates before numeric IoU. No corners are clamped and no quality thresholds are relaxed. If none pass, review remains required. Tests cover both valid in-frame alternatives and inadequate alternatives. 41 extraction + 27 combined tests passed.
 
 Real Paddle/Hezar CPU OCR also ran on the supplied already-rectified card 948 image: 13 text regions and five nonempty template fields. No ten-digit-only numeric region was produced. This is not a successful six-field accuracy result. The exact original SAM mask was not supplied and the original CUDA extraction was not rerun locally; the end-to-end image 948 result must be retried in Colab.
+
+## Bounded numerical edge-fit adjustment (2026-11-03)
+A follow-up report confirmed no candidate passed the original bounds gate. For edge-intersection fits only, when the SAM component does not touch the image boundary, allow projection to valid pixel bounds if the maximum corner movement is no more than min(4, max(1, 0.001 * min(image dimensions))) pixels. Recompute mask IoU and coverage after projection and apply all existing quality gates. Raw and bounded proposals remain distinct, with explicit adjustment and per-candidate diagnostics. Large movement and genuinely border-touching masks cannot use this path.
+
+42 extraction and 27 combined tests passed; original CUDA inference/SAM mask for card 948 remains unavailable locally. This is a tested numerical policy change, not an end-to-end GPU accuracy claim.

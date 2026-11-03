@@ -70,7 +70,11 @@ def quad_from_mask(mask, min_iou=.88):
     cv2.drawContours(component, [contour], -1, 1, cv2.FILLED)
     hull = cv2.convexHull(contour)
     perimeter = cv2.arcLength(hull, True)
+    height, width = mask.shape
+    clipped = bool(component[0].any() or component[-1].any() or component[:, 0].any() or component[:, -1].any())
+    fit_tolerance = min(4., max(1., .001*min(height, width)))
     candidates = []
+    adjustments = {}
     seen = set()
     for epsilon in np.linspace(.002, .08, 100):
         approx = cv2.approxPolyDP(hull, float(epsilon*perimeter), True)
@@ -89,6 +93,20 @@ def quad_from_mask(mask, min_iou=.88):
                 continue
             iou, coverage = _quad_metrics(variant, component)
             candidates.append((iou, coverage, variant, method))
+            if method == 'edge_intersections' and not clipped:
+                bounded = variant.copy()
+                bounded[:,0] = np.clip(bounded[:,0], 0, width-1)
+                bounded[:,1] = np.clip(bounded[:,1], 0, height-1)
+                shift = float(np.linalg.norm(bounded-variant, axis=1).max())
+                if 0 < shift <= fit_tolerance:
+                    try:
+                        bounded = order_points(bounded)
+                    except ValueError:
+                        continue
+                    # Recheck quality using actual source pixels; no quality gate is waived.
+                    bounded_iou, bounded_coverage = _quad_metrics(bounded, component)
+                    candidates.append((bounded_iou, bounded_coverage, bounded, 'bounded_edge_intersections'))
+                    adjustments[id(bounded)] = shift
     if not candidates:
         raise ValueError('Four reliable card edges could not be recovered')
     height, width = mask.shape
@@ -121,7 +139,13 @@ def quad_from_mask(mask, min_iou=.88):
                   'border_status': 'tight_crop_candidate' if tight_crop else ('clipped_or_uncertain' if clipped else 'clear'),
                   'geometry_ok': ok, 'corners_inside_image': inside,
                   'geometry_failure_reasons': failures, 'candidate_count': len(candidates),
-                  'candidate_selection': 'valid_geometry_first_then_iou'}
+                  'candidate_selection': 'valid_geometry_first_then_iou',
+                  'boundary_fit_tolerance_px': fit_tolerance,
+                  'boundary_fit_adjustment_px': adjustments.get(id(quad), 0.),
+                  'geometry_candidate_diagnostics': [
+                      {'method': c[3], 'iou': float(c[0]), 'coverage': float(c[1]),
+                       'geometry_ok': assess(c)[0], 'corners_inside_image': assess(c)[1]}
+                      for c in candidates]}
 
 
 def warp_candidates(img, quad, width=856, height=540):

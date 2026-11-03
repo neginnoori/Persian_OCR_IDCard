@@ -71,3 +71,26 @@ def test_outside_refinement_does_not_waive_low_quality_hull(monkeypatch):
     _, metrics = geometry.quad_from_mask(mask)
     assert not metrics['geometry_ok']
     assert 'corners_outside_image' in metrics['geometry_failure_reasons']
+
+
+def test_subpixel_refinement_is_bounded_only_for_clear_mask(monkeypatch):
+    import cardid.geometry as geometry
+    mask = np.zeros((1000, 1000), np.uint8)
+    mask[20:980, 1:990] = 1
+    def fit(quad, contour):
+        result = quad.copy()
+        result[0,0] = -.75
+        return result
+    monkeypatch.setattr(geometry, '_refine_edges', fit)
+    monkeypatch.setattr(geometry, '_quad_metrics', lambda q,m: ((.99,1.) if q[:,0].min() <= 0 else (.7,1.)))
+    quad, metrics = geometry.quad_from_mask(mask)
+    assert metrics['geometry_ok']
+    assert metrics['quad_method'] == 'bounded_edge_intersections'
+    assert metrics['boundary_fit_adjustment_px'] == .75
+    assert quad[:,0].min() == 0
+    # A true border contact cannot be repaired by this numerical-fit path.
+    mask[20:980,0] = 1
+    mask[:,800:] = 0
+    _, metrics = geometry.quad_from_mask(mask)
+    assert not metrics['geometry_ok']
+    assert all(c['method'] != 'bounded_edge_intersections' for c in metrics['geometry_candidate_diagnostics'])
