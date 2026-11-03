@@ -29,3 +29,7 @@ Real Paddle/Hezar CPU OCR also ran on the supplied already-rectified card 948 im
 A follow-up report confirmed no candidate passed the original bounds gate. For edge-intersection fits only, when the SAM component does not touch the image boundary, allow projection to valid pixel bounds if the maximum corner movement is no more than min(4, max(1, 0.001 * min(image dimensions))) pixels. Recompute mask IoU and coverage after projection and apply all existing quality gates. Raw and bounded proposals remain distinct, with explicit adjustment and per-candidate diagnostics. Large movement and genuinely border-touching masks cannot use this path.
 
 42 extraction and 27 combined tests passed; original CUDA inference/SAM mask for card 948 remains unavailable locally. This is a tested numerical policy change, not an end-to-end GPU accuracy claim.
+
+
+## Orientation-only processing
+42 extractor tests and 34 combined-pipeline tests pass locally (76 total). New integration tests exercise all four exact pixel rotations and coordinate transforms with a border-touching mask, explicitly forbid quadrilateral fitting and perspective warping, and confirm that an ambiguous direction / missing mask still reaches the text reader. A frame-offset test checks six-field coordinate mapping. Model backends are injected in these tests: the complete DINO/SAM + EasyOCR + Paddle + Hezar path has not been validated on a T4 here. Arbitrary deskew, perspective correction and six-field accuracy are not guaranteed by rotation-only processing.

@@ -12,16 +12,22 @@ FIELDS = [('national_id', 'کد ملی'), ('first_name', 'نام'),
 CENTERS = [.28, .38, .48, .58, .68, .78]
 
 
-def assign_fields(regions, size):
+def assign_fields(regions, size, *, frame=None):
     width, height = size
+    left = top = 0
+    if frame is not None:
+        left, top, right, bottom = frame
+        width, height = right-left, bottom-top
+        if width <= 0 or height <= 0:
+            raise ValueError('Invalid card frame')
     grouped = [[] for _ in FIELDS]
     for index, region in enumerate(regions):
         if not str(region.get('text_raw', '')).strip():
             continue
         x1, y1, x2, y2 = region['box']
-        cx, cy = (x1+x2)/(2*width), (y1+y2)/(2*height)
+        cx, cy = (x1+x2-2*left)/(2*width), (y1+y2-2*top)/(2*height)
         # Exclude portrait, heading and the label column. Never use known answers.
-        if not (.38 <= cx <= .81 and x2/width <= .85):
+        if not (.38 <= cx <= .81 and (x2-left)/width <= .85):
             continue
         distances = [abs(cy-center) for center in CENTERS]
         row = min(range(6), key=lambda i: distances[i])
@@ -48,5 +54,5 @@ def assign_fields(regions, size):
         output.append({'field': field, 'label': label, 'text_raw': raw, 'value': value or None,
                        'box': box, 'source_region_ids': [i for i, _ in items],
                        'status': status, 'review_required': True,
-                       'assignment_method': 'standard_front_layout_v1'})
+                       'assignment_method': 'card_frame_layout_approximate_v1' if frame is not None else 'standard_front_layout_v1'})
     return output

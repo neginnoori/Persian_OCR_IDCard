@@ -15,6 +15,9 @@ class Extractor:
         self.status = status
         self.calls = []
 
+    def orient_result(self, source, **kwargs):
+        return self.extract_result(source, **kwargs)
+
     def extract_result(self, source, **kwargs):
         self.calls.append(kwargs)
         return ExtractionResult(self.status, Image.new('RGB', (856, 540)), reason=None)
@@ -75,7 +78,7 @@ def test_real_extractor_geometry_connects_to_hezar_reader(monkeypatch):
             return Detection([mask], [.95], .9)
     monkeypatch.setattr(implementation, 'TorchBackend', Backend)
     reader = Reader()
-    result = PersianCardOCR(extractor=CardExtractor(), reader=reader).process(
+    result = PersianCardOCR(extractor=CardExtractor(), reader=reader, preprocessing='rectify').process(
         Image.new('RGB', (1000, 700)), orientation_override=0)
     assert result.status == 'ocr_candidate' and reader.calls == 1
     assert result.metadata['extraction']['metadata']['geometry_ok']
@@ -100,7 +103,7 @@ def test_tight_crop_geometry_reaches_hezar(monkeypatch):
             return Detection([np.ones((540, 856), np.uint8)], [.95], .9)
     monkeypatch.setattr(implementation, 'TorchBackend', Backend)
     reader = Reader()
-    result = PersianCardOCR(extractor=CardExtractor(), reader=reader).process(
+    result = PersianCardOCR(extractor=CardExtractor(), reader=reader, preprocessing='rectify').process(
         Image.new('RGB', (856, 540)), orientation_override=0)
     assert result.status == 'ocr_candidate'
     assert reader.calls == 1

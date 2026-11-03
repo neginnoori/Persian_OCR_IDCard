@@ -9,11 +9,11 @@ from persian_id_ocr import PersianCardOCR
 
 
 def run_batch(inputs, output_root, cache_dir, *, pipeline=None, orientation_override=None,
-              detector_backend='paddle', detector_device=None):
+              detector_backend='paddle', detector_device=None, preprocessing='orientation_only'):
     run = Path(output_root)/datetime.now(timezone.utc).strftime('run_%Y%m%d_%H%M%S_%f')
     run.mkdir(parents=True, exist_ok=False)
     pipeline = pipeline if pipeline is not None else PersianCardOCR(
-        cache_dir, detector_backend=detector_backend, detector_device=detector_device)
+        cache_dir, detector_backend=detector_backend, detector_device=detector_device, preprocessing=preprocessing)
     summary = []
     for index, source in enumerate(inputs):
         name = re.sub(r'[^\w.-]', '_', Path(source).stem)[:80] or 'image'
@@ -65,10 +65,11 @@ def main():
     parser.add_argument('--orientation-override', type=int, choices=[0, 90, 180, 270])
     parser.add_argument('--text-detector', choices=['paddle','craft'], default='paddle')
     parser.add_argument('--paddle-device', choices=['cpu','gpu:0'])
+    parser.add_argument('--preprocessing', choices=['orientation_only', 'rectify'], default='orientation_only')
     args = parser.parse_args()
     run, summary = run_batch(args.inputs, args.output_root, args.cache_dir,
                              orientation_override=args.orientation_override,
-                             detector_backend=args.text_detector, detector_device=args.paddle_device)
+                             detector_backend=args.text_detector, detector_device=args.paddle_device, preprocessing=args.preprocessing)
     print('Results:', run, flush=True)
     return 1 if any(r['status'] == 'error' for r in summary) else (
         2 if any(r['status'] != 'ocr_candidate' for r in summary) else 0)
