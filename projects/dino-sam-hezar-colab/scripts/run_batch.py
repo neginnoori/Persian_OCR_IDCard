@@ -9,7 +9,7 @@ from persian_id_ocr import PersianCardOCR
 
 
 def run_batch(inputs, output_root, cache_dir, *, pipeline=None, orientation_override=None,
-              detector_backend='paddle', detector_device=None, preprocessing='orientation_only'):
+              detector_backend='paddle', detector_device=None, preprocessing='rectify_best_effort'):
     run = Path(output_root)/datetime.now(timezone.utc).strftime('run_%Y%m%d_%H%M%S_%f')
     run.mkdir(parents=True, exist_ok=False)
     pipeline = pipeline if pipeline is not None else PersianCardOCR(
@@ -65,7 +65,7 @@ def main():
     parser.add_argument('--orientation-override', type=int, choices=[0, 90, 180, 270])
     parser.add_argument('--text-detector', choices=['paddle','craft'], default='paddle')
     parser.add_argument('--paddle-device', choices=['cpu','gpu:0'])
-    parser.add_argument('--preprocessing', choices=['orientation_only', 'rectify'], default='orientation_only')
+    parser.add_argument('--preprocessing', choices=['orientation_only', 'rectify', 'rectify_best_effort'], default='rectify_best_effort')
     args = parser.parse_args()
     run, summary = run_batch(args.inputs, args.output_root, args.cache_dir,
                              orientation_override=args.orientation_override,

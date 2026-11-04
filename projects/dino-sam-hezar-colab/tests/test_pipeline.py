@@ -50,7 +50,7 @@ def test_accepted_card_reaches_hezar_once_and_preserves_raw_text():
 @pytest.mark.parametrize('status', ['needs_review', 'not_found'])
 def test_uncertain_extraction_never_runs_ocr(status):
     reader = Reader()
-    result = PersianCardOCR(extractor=Extractor(status), reader=reader).process('photo.jpg')
+    result = PersianCardOCR(extractor=Extractor(status), reader=reader, preprocessing='rectify').process('photo.jpg')
     assert result.status == status and not result.text and not result.regions
     assert reader.calls == 0 and result.metadata['ocr_seconds'] == 0
 
@@ -178,7 +178,7 @@ def test_batch_results_are_isolated_and_errors_are_reported(tmp_path):
     spec = importlib.util.spec_from_file_location('run_batch', path)
     worker = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(worker)
-    pipeline = PersianCardOCR(extractor=Extractor(), reader=Reader())
+    pipeline = PersianCardOCR(extractor=Extractor(), reader=Reader(), preprocessing='rectify')
     run1, summary1 = worker.run_batch(['same.jpg'], tmp_path, tmp_path, pipeline=pipeline)
     assert summary1[0]['status'] == 'ocr_candidate'
     assert (run1/summary1[0]['folder']/'card.png').is_file()

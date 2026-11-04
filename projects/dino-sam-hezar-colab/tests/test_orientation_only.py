@@ -28,7 +28,7 @@ def test_orientation_only_preserves_pixels_and_skips_geometry(monkeypatch, turns
             np.testing.assert_array_equal(np.asarray(image), np.rot90(rgb, turns))
             return [{'box':[2,2,10,10], 'text_raw':'نمونه', 'text':'نمونه'}]
     reader = Reader()
-    result = PersianCardOCR(extractor=CardExtractor(), reader=reader).process(
+    result = PersianCardOCR(extractor=CardExtractor(), reader=reader, preprocessing='orientation_only').process(
         Image.fromarray(rgb), orientation_override=90*turns)
     assert result.status == 'ocr_candidate'
     assert reader.calls == 1
@@ -58,7 +58,7 @@ def test_uncertain_orientation_and_missing_mask_still_run_text_reader(monkeypatc
             assert image.size == (40,60)
             return [{'box':[2,2,10,10], 'text_raw':'نمونه', 'text':'نمونه'}]
     reader = Reader()
-    result = PersianCardOCR(extractor=CardExtractor(), reader=reader).process(Image.new('RGB',(60,40)))
+    result = PersianCardOCR(extractor=CardExtractor(), reader=reader, preprocessing='orientation_only').process(Image.new('RGB',(60,40)))
     assert reader.calls == 1 and result.status == 'ocr_candidate'
     assert result.text == 'نمونه'
     meta = result.metadata['extraction']['metadata']

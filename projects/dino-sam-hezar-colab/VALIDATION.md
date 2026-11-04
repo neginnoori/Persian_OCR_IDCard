@@ -33,3 +33,7 @@ A follow-up report confirmed no candidate passed the original bounds gate. For e
 
 ## Orientation-only processing
 42 extractor tests and 34 combined-pipeline tests pass locally (76 total). New integration tests exercise all four exact pixel rotations and coordinate transforms with a border-touching mask, explicitly forbid quadrilateral fitting and perspective warping, and confirm that an ambiguous direction / missing mask still reaches the text reader. A frame-offset test checks six-field coordinate mapping. Model backends are injected in these tests: the complete DINO/SAM + EasyOCR + Paddle + Hezar path has not been validated on a T4 here. Arbitrary deskew, perspective correction and six-field accuracy are not guaranteed by rotation-only processing.
+
+
+## Rectification regression (2026-11-04)
+The default is now rectify_best_effort. Four injected-backend tests project a synthetic card into a diagonal perspective scene, rotate the scene through all four quarter-turns, and assert that the OCR reader receives an upright 856x540 card (mean pixel error <3), with field assignment in card coordinates. Further tests cover nonblocking geometry/orientation warnings, explicit missing-quad fallback, and propagated inference errors. These test real geometry/orchestration with injected model evidence, not live DINO/SAM or recognition accuracy on 958.jpg. T4 end-to-end validation remains required.
