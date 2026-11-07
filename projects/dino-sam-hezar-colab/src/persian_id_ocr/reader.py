@@ -87,8 +87,13 @@ class HezarReader:
                 detector.eval()
                 detector.preprocessor.image_processor.config.square_size = 2560
                 detector.preprocessor.image_processor.config.mag_ratio = 1.0
-            recognizer = Model.load('hezarai/crnn-base-fa-v2', device=self.device, cache_dir=str(self.cache_dir))
-            recognizer.eval()
+            try:
+                recognizer = Model.load('hezarai/crnn-base-fa-v2', device=self.device, cache_dir=str(self.cache_dir))
+                recognizer.eval()
+            except BaseException:
+                if hasattr(detector, 'close'):
+                    detector.close()
+                raise
             self.detector, self.recognizer = detector, recognizer
         return self
 

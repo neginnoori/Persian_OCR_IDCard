@@ -51,7 +51,8 @@ class PaddleWorkerDetector:
                 command += ['--model-dir', str(self.model_dir)]
             self.responses = queue.Queue()
             process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                       text=True, bufsize=1)  # stderr is inherited for live diagnostics
+                                       text=True, encoding='utf-8', bufsize=1,
+                                       env=dict(os.environ, PYTHONUTF8='1', PYTHONIOENCODING='utf-8'))  # stderr is inherited for live diagnostics
             self.process = process
             responses = self.responses
             def consume():

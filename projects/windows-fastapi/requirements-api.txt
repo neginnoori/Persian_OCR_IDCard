@@ -1,0 +1,8 @@
+# API dependencies; the main requirements.txt adds the OCR runtime.
+fastapi==0.162.0
+uvicorn==0.54.0
+python-multipart==0.0.33
+pydantic==2.14.2
+pydantic-settings==2.16.2
+python-dotenv==1.2.4
+starlette==1.10.0

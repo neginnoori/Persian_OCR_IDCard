@@ -194,3 +194,20 @@ def test_batch_results_are_isolated_and_errors_are_reported(tmp_path):
     report = json.loads((run3/summary3[0]['folder']/'result.json').read_text())
     assert report['status'] == 'error' and 'model unavailable' in report['error']
 
+
+
+def test_recognizer_startup_failure_closes_paddle_process(monkeypatch, tmp_path):
+    import sys
+    closed = []
+    class Detector:
+        def __init__(self, *args, **kwargs): pass
+        def load(self): return self
+        def close(self): closed.append(True)
+    def broken(*args, **kwargs): raise RuntimeError('weight loading failed')
+    monkeypatch.setitem(sys.modules, 'hezar.models', SimpleNamespace(Model=SimpleNamespace(load=broken)))
+    import persian_id_ocr.paddle_client as client
+    monkeypatch.setattr(client, 'PaddleWorkerDetector', Detector)
+    reader = HezarReader(tmp_path, device='cpu')
+    with pytest.raises(RuntimeError, match='weight loading failed'):
+        reader.load()
+    assert closed == [True] and reader.detector is None

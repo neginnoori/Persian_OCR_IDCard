@@ -1,0 +1,5 @@
+# Main Windows Python 3.11 environment: API + Torch/Hezar.
+# Run scripts/setup.ps1 to install CUDA Torch first and the local OCR packages.
+# These pin direct dependencies; they are not a complete transitive lockfile.
+-r requirements-api.txt
+-r ../dino-sam-hezar-colab/requirements-colab.txt

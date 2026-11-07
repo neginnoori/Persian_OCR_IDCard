@@ -1,93 +1,32 @@
-# Persian OCR ID Card
+# Persian ID Card OCR — Windows FastAPI branch
 
-پروژه محلی با Python 3.11 و محیط مجازی مستقل `.venv`.
-عکس در سیستم محلی پردازش می‌شود. دانلود اولیه وزن‌ها و داده به اینترنت نیاز دارد.
+This branch adds a Windows/NVIDIA API around the corrected card pipeline:
+DINO/SAM → card rectification and orientation → Paddle text detection → Hezar CRNN → six fields.
 
-## شروع
+**[راهنمای فارسی نصب و Swagger](projects/windows-fastapi/README.fa.md)**
 
-در ترمینال:
+From a complete checkout/ZIP, open PowerShell:
 
-```bash
-cd /Users/neginnoori/Documents/Codex/Persian_OCR_IDCard
-source .venv/bin/activate
-jupyter lab notebooks/Persian_Card_OCR_v2.ipynb
+```powershell
+cd projects\windows-fastapi
+powershell -ExecutionPolicy Bypass -File .\scripts\setup.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\run.ps1
 ```
 
-یا فایل `start_jupyter.command` را اجرا کنید. کرنل Notebook باید **Persian Card OCR (.venv)** باشد.
-بخش نصب Notebook در این پروژه لازم نیست؛ وابستگی‌ها از قبل در محیط پروژه نصب می‌شوند.
+Target: Windows x64, Python 3.11 x64, NVIDIA GPU with a suitable CUDA driver.
+After startup, open **http://127.0.0.1:8000/docs**. Copy the generated `OCR_API_KEY`
+from the private `.env` into Swagger's Authorize dialog, then upload a JPEG/PNG to
+`POST /v1/ocr` using the `file` field.
 
-## عکس محلی
+Dependencies: [main requirements](projects/windows-fastapi/requirements.txt),
+[API](projects/windows-fastapi/requirements-api.txt),
+[isolated Paddle](projects/windows-fastapi/requirements-paddle.txt).
+The installer creates both environments and installs the repository's local OCR packages.
 
-```bash
-persian-card-ocr --image /path/to/card.jpg --output outputs/my_card
-```
+Models load once, work is serialized with a bounded queue, and responses preserve raw
+text, six fields, missing values and warnings. `ocr_candidate` is not identity verification.
+The service binds to loopback by default. Read the deployment notes before company-network use.
 
-## داده Kaggle
-
-```bash
-persian-card-ocr --download-dataset
-persian-card-ocr --dataset-id 354 --output outputs/card_354
-```
-
-در صورت درخواست احراز هویت Kaggle، در Notebook یک بار `kagglehub.login()` را اجرا کنید.
-نسخه CLI مسیر کش واقعی Kaggle را استفاده می‌کند و به مسیرهای Colab وابسته نیست.
-
-## مسیر پردازش و خروجی
-
-DocAligner ONNX چهار گوشه پیشنهادی را تعیین می‌کند؛ OpenCV پرسپکتیو را اصلاح می‌کند؛
-دو جهت افقی با امتیاز ابتکاری OCR مقایسه می‌شوند؛ Hezar CRAFT نواحی متن و CRNN متن فارسی را می‌خواند.
-در Mac این نسخه از CPU استفاده می‌کند؛ CUDA مخصوص GPU انویدیا است.
-
-پوشه خروجی شامل `boundary.jpg`, `rectified.png`, `oriented.png`, `text_boxes.png`,
-برش‌ها، `text.txt` و `result.json` است. در Notebook جدول CSV و ZIP هم ساخته می‌شود.
-نام‌گذاری شش فیلد هویتی در این نسخه پیاده نشده است؛ خروجی متن OCR است.
-
-`ocr_candidate` به معنی صحت قطعی نیست. `orientation_uncertain` نیاز به بررسی جهت دارد.
-کنترل هندسی هویت شیء را تأیید نمی‌کند؛ کارت ناقص یا گوشه پوشیده ممکن است تشخیص اشتباه داشته باشد.
-متن خام حفظ می‌شود؛ هیچ رقمی با حدس یا با پاسخ CSV اصلاح نمی‌شود.
-
-## منابع
-
-- https://github.com/DocsaidLab/DocAligner
-- https://huggingface.co/hezarai/CRAFT
-- https://huggingface.co/hezarai/crnn-base-fa-v2
-
-ایده‌های مخزن پیشنهادی کاربر بررسی شده‌اند، اما کدی از آن کپی نشده است:
-https://github.com/Sherviiiin/iranian-id-card-ocr/tree/master/cv_proj
-
-## بررسی
-
-```bash
-python -m unittest discover -s tests -v
-```
-
-نسخه‌های نصب‌شده در `requirements-lock.txt` ثبت می‌شوند. این فایل وضعیت محیط همین سیستم است.
-
-## وضعیت اجرای اولیه
-
-نصب وابستگی‌ها، واردکردن مدل‌های Hezar، ثبت کرنل، بررسی ساختار Notebook و چهار آزمون کد موفق بوده‌اند.
-وزن‌های DocAligner و Hezar دانلود شده‌اند. مسیر کامل روی عکس ارسالی `Unknown-2.jpeg` روی CPU اجرا شد؛
-زمان پردازش پس از بارگذاری مدل‌ها حدود ۶٫۴ ثانیه بود. کادر و جهت در بررسی تصویری مناسب بودند، اما متن OCR خطا دارد.
-این یک اجرای آزمایشی است و ارزیابی دقت دیتاست محسوب نمی‌شود.
-نتیجه در `outputs/local_smoke_test` و گزارش بررسی در `verification.json` موجود است.
-
-## عکس با کادر بسته و فضای اطراف کم
-
-اگر مدل در تلاش اول چهار گوشه را پیدا نکند، اکنون حاشیه خاکستری موقت ۱۵٪ به عکس اضافه می‌شود
-و تشخیص تکرار می‌شود. مختصات گوشه‌ها به عکس اصلی برمی‌گردند و حاشیه مصنوعی وارد OCR نمی‌شود.
-فقط خطای مختصاتی کوچک نزدیک مرز تصویر تحمل می‌شود؛ گوشه‌های دور از تصویر همچنان رد می‌شوند.
-تاریخچه تلاش‌ها در `location_attempts` فایل نتیجه ذخیره می‌شود.
-
-این اصلاح روی عکس کارت کاربر که قبلاً `corners_not_found` می‌داد آزمایش شد؛ مسیر OCR اکنون کامل می‌شود.
-تشخیص گوشه‌های همان عکس در چهار چرخش ۰، ۹۰، ۱۸۰ و ۲۷۰ درجه بررسی شد و تصویر سفید هم رد شد.
-متن بعضی عنوان‌های چاپ‌شده هنوز خطا دارد؛ این بررسی تضمین دقت روی همه ورودی‌ها نیست.
-نتیجه اجرای اصلاح‌شده در `outputs/tight_crop_regression` موجود است.
-
-نسخه جاری نوت‌بوک `notebooks/Persian_Card_OCR_v2.ipynb` است؛ فایل قبلی برای حفظ کار کاربر نگهداری شده است.
-V2 نشان نسخه `tight-crop-v2` را چاپ می‌کند و پیش از پردازش هر عکس، کد را دوباره بارگذاری می‌کند.
-وزن‌ها در همان موتور استفاده می‌شوند اما متد قدیمی تشخیص گوشه در حافظه باقی نمی‌ماند.
-در V2 اجرای نمونه دیتاست به‌صورت پیش‌فرض خاموش است تا آزمایش عکس محلی به دانلود Kaggle وابسته نباشد.
-برای دیتاست، `RUN_DATASET_DEMO=True` یا `RUN_BATCH=True` را تنظیم کنید.
-
-نوت‌بوک V2 با کرنل پروژه از ابتدا تا انتها روی عکس کاربر اجرا و خروجی‌ها در همان نوت‌بوک ذخیره شده‌اند.
-هیچ سلولی استثنا نداد. خروجی، متن پیشنهادی OCR است و برخی عنوان‌ها همچنان خطای خواندن دارند.
+[Validation and remaining limits](projects/windows-fastapi/VALIDATION.md).
+API tests use injected model doubles; full Windows GPU inference still requires target-machine validation.
+The existing Colab notebook remains in `projects/dino-sam-hezar-colab`.

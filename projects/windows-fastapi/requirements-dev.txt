@@ -1,0 +1,2 @@
+# Compatibility entry point for the Windows README test instructions.
+-r requirements-test.txt
