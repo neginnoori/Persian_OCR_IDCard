@@ -1,0 +1,8 @@
+# Isolated detection environment only. Do NOT install into the Torch/Hezar venv.
+paddleocr==3.3.2
+paddlex[ocr-core]==3.3.13
+numpy==2.2.6
+Pillow==11.3.0
+huggingface-hub==0.36.2
+# PaddleX's tested OpenCV provider, isolated from EasyOCR's headless provider.
+opencv-contrib-python==4.10.0.84

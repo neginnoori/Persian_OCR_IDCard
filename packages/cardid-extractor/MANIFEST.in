@@ -1,0 +1,5 @@
+include README.md README.fa.md THIRD_PARTY.md requirements-colab.txt VALIDATION.md
+recursive-include docs *.md *.json
+recursive-include examples *.py *.ipynb
+recursive-include scripts *.py
+recursive-include tests *.py

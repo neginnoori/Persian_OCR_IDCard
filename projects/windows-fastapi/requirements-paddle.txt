@@ -1,0 +1,3 @@
+# Only for .venv-paddle. Keep Paddle/OpenCV-contrib outside the API/Torch venv.
+paddlepaddle==3.2.2
+-r ../dino-sam-hezar-colab/requirements-paddle.txt

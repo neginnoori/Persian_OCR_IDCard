@@ -1,0 +1,11 @@
+{
+  "version": "0.1.0",
+  "unit_tests_passed": 34,
+  "wheel_install_no_deps": true,
+  "installed_package_import": true,
+  "lazy_import_without_torch": true,
+  "entry_point_registered": true,
+  "wheel_record_hashes": true,
+  "full_gpu_inference_executed": false,
+  "live_colab_executed": false
+}

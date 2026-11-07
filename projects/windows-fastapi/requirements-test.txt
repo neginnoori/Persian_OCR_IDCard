@@ -1,0 +1,5 @@
+# Lightweight HTTP tests; no Torch, Paddle, model downloads or GPU required.
+-r requirements-api.txt
+Pillow==11.3.0
+pytest==9.2.0
+httpx==0.28.1
