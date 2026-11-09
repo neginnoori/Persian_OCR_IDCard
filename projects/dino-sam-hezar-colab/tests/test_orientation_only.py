@@ -74,4 +74,4 @@ def test_field_frame_uses_offset_without_changing_output_coordinates():
     fields=assign_fields(regions, (1400,900), frame=[100,100,1100,900])
     assert fields[0]['value'] == '1234567890'
     assert fields[0]['box'] == regions[0]['box']
-    assert fields[0]['assignment_method'] == 'card_frame_layout_approximate_v1'
+    assert fields[0]['assignment_method'] == 'card_frame_layout_approximate_v2'
