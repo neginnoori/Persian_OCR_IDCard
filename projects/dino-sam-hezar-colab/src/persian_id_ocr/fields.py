@@ -58,12 +58,32 @@ def assign_fields(regions, size, *, frame=None):
         raw = ('' if numeric else ' ').join(str(r['text_raw']) for _, r in items)
         value = normalize_text(('' if numeric else ' ').join(
             str(r.get('field_value', r['text_raw'])) for _, r in items))
+        numeric_unresolved = False
+        if numeric:
+            # Extract complete numeric runs per region; never join unrelated
+            # stamp numbers or erase letters inside a number to invent a value.
+            candidates = []
+            for index, region in items:
+                normalized = normalize_text(region['text_raw'])
+                runs = re.findall(r'[0-9]+(?:[ /]*[0-9]+)*', normalized)
+                for run in runs:
+                    token = re.sub(r'\s+', '', run)
+                    if field == 'national_id' and '/' in token:
+                        continue
+                    candidates.append((token, index, region))
+            unique = {token for token, _, _ in candidates}
+            numeric_unresolved = bool(items) and len(unique) != 1
+            if len(unique) == 1:
+                value = next(iter(unique))
+                items = [(index, region) for token, index, region in candidates]
+            else:
+                value = ''
         box = None
         if items:
             boxes = [r['box'] for _, r in items]
             box = [min(b[0] for b in boxes), min(b[1] for b in boxes),
                    max(b[2] for b in boxes), max(b[3] for b in boxes)]
-        status = 'candidate' if value else 'missing'
+        status = 'invalid_format' if numeric_unresolved else ('candidate' if value else 'missing')
         if value and numeric:
             pattern = r'\d{10}' if field == 'national_id' else r'1[234]\d{2}/(?:0[1-9]|1[0-2])/(?:0[1-9]|[12]\d|3[01])'
             if not re.fullmatch(pattern, value):
