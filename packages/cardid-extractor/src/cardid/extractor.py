@@ -5,7 +5,7 @@ import numpy as np
 from PIL import Image
 from .backend import TorchBackend
 from .errors import CardNotFoundError, InferenceError, ReviewRequiredError
-from .geometry import quad_from_mask, warp_candidates, choose_orientation, score_orientation
+from .geometry import quad_from_mask, warp_candidates, choose_orientation
 from .images import normalize_image
 from .types import ExtractionResult, ExtractorConfig
 
@@ -51,7 +51,7 @@ class CardExtractor:
     def orient_result(self, image, *, color_order="RGB", orientation_override=None) -> ExtractionResult:
         """Rotate the complete input; geometry and orientation uncertainty never block OCR.
 
-        The full input supplies orientation evidence. No perspective warp,
+        DINO/SAM supply an orientation-scoring ROI only. No perspective warp,
         corner fitting, resizing or cropping is applied to the returned pixels.
         Override is a counterclockwise rotation of the EXIF-corrected input.
         """
@@ -72,11 +72,12 @@ class CardExtractor:
                 mask = np.asarray(mask) > 0
                 if mask.shape == (height, width) and mask.any():
                     valid_masks.append((mask, float(score)))
-            # Orientation fallback must not reuse an unverified stamp ROI.
-            sam_score = None
-            valid_masks = []
-            warnings.append('full_image_orientation_without_verified_card_frame')
-            if not detection.masks:
+            if valid_masks:
+                mask, sam_score = max(valid_masks, key=lambda item: item[1])
+                yy, xx = np.where(mask)
+                frame = [int(xx.min()), int(yy.min()), int(xx.max())+1, int(yy.max())+1]
+            else:
+                sam_score = None
                 warnings.append('no_card_mask_using_full_image')
             x1, y1, x2, y2 = frame
             preview = pil.crop(tuple(frame))
@@ -145,34 +146,18 @@ class CardExtractor:
             if not proposals:
                 metadata['elapsed_ms'] = (perf_counter()-started)*1000
                 return ExtractionResult("needs_review", reason="no_reliable_quadrilateral", metadata=metadata)
-            bgr = cv2.cvtColor(np.asarray(pil), cv2.COLOR_RGB2BGR)
-            ranked = []
-            seen = []
-            for quad, metrics in proposals:
-                if any(np.mean(np.linalg.norm(quad-old, axis=1)) < .015*max(pil.size) for old in seen):
-                    continue
-                seen.append(quad)
-                try:
-                    candidates = warp_candidates(bgr, quad, self.config.width, self.config.height)
-                    chosen, orientation = choose_orientation(
-                        candidates, backend.reader, backend.face_detector, override=orientation_override,
-                        min_margin=self.config.min_orientation_margin)
-                    evidence = (score_orientation(chosen['card'], backend.reader, backend.face_detector)
-                                if orientation_override is None else
-                                {'score': 0., 'matched_keywords': [], 'face_on_left': False})
-                except Exception as error:
-                    raise InferenceError(f"Card rectification/orientation failed: {error}") from error
-                labels = set(evidence['matched_keywords']) & {'نام', 'خانوادگی', 'تولد', 'پدر', 'اعتبار', 'ملی'}
-                supported = orientation_override is not None or len(labels) >= 2 or (bool(labels) and evidence['face_on_left'])
-                ranked.append((supported, evidence['score'], chosen, orientation, metrics, evidence))
-            metadata['candidate_selection'] = [
-                {'card_evidence_ok': r[0], 'score': r[1], 'evidence': r[5]} for r in ranked]
-            supported, _, chosen, orientation, metrics, evidence = max(ranked, key=lambda r: (r[0], r[1]))
-            if not supported:
-                metadata.update(card_evidence_ok=False, elapsed_ms=(perf_counter()-started)*1000)
-                return ExtractionResult('needs_review', reason='no_supported_card_candidate', metadata=metadata)
+            quad, metrics = max(proposals, key=lambda item: (
+                item[1]['geometry_ok'], item[1]['mask_quad_iou']+.05*item[1]['sam_predicted_iou']))
             metadata.update(metrics)
-            metadata['card_evidence_ok'] = True
+            bgr = cv2.cvtColor(np.asarray(pil), cv2.COLOR_RGB2BGR)
+            try:
+                candidates = warp_candidates(bgr, quad, self.config.width, self.config.height)
+                chosen, orientation = choose_orientation(
+                    candidates, backend.reader, backend.face_detector, override=orientation_override,
+                    min_margin=self.config.min_orientation_margin)
+            except Exception as error:
+                # Runtime/model errors must be visible to the service, not silently accepted.
+                raise InferenceError(f"Card rectification/orientation failed: {error}") from error
             metadata.update(orientation)
             matrix = chosen['H']
             metadata.update(original_to_card_H=matrix.tolist(), card_to_original_H=np.linalg.inv(matrix).tolist(),
