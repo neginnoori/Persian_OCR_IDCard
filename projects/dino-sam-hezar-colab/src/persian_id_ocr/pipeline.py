@@ -91,10 +91,17 @@ class PersianCardOCR:
                 # OCR still runs on the whole image; no card layout was located.
                 field_regions = []
             metadata['field_assignment'] = 'approximate_card_frame' if frame else ('unavailable' if effective_mode == 'orientation_only' else 'rectified_template')
+            fields = assign_fields(field_regions, extraction.image.size, frame=frame)
+            if hasattr(self.reader, 'recognize_crops') and field_regions:
+                from .numeric_retry import retry_numeric_fields
+                fields = retry_numeric_fields(extraction.image, fields,
+                                              self.reader.recognize_crops, frame=frame)
+            metadata.update(ocr_seconds=perf_counter()-extracted_at,
+                            total_seconds=perf_counter()-started)
             return OCRResult('ocr_candidate' if has_text else 'no_text', image=extraction.image,
                              text='\n'.join(r['text_raw'] for r in regions),
                              text_normalized='\n'.join(r['text'] for r in regions), regions=regions,
-                             metadata=metadata, fields=assign_fields(field_regions, extraction.image.size, frame=frame))
+                             metadata=metadata, fields=fields)
 
     def close(self):
         with self._lock:

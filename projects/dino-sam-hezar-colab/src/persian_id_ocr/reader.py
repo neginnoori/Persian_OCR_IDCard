@@ -87,8 +87,13 @@ class HezarReader:
                 detector.eval()
                 detector.preprocessor.image_processor.config.square_size = 2560
                 detector.preprocessor.image_processor.config.mag_ratio = 1.0
-            recognizer = Model.load('hezarai/crnn-base-fa-v2', device=self.device, cache_dir=str(self.cache_dir))
-            recognizer.eval()
+            try:
+                recognizer = Model.load('hezarai/crnn-base-fa-v2', device=self.device, cache_dir=str(self.cache_dir))
+                recognizer.eval()
+            except BaseException:
+                if hasattr(detector, 'close'):
+                    detector.close()
+                raise
             self.detector, self.recognizer = detector, recognizer
         return self
 
@@ -159,6 +164,17 @@ class HezarReader:
                     raw = str(prediction['text'])
                     region.update(text_raw=raw, text=normalize_text(raw))
             return reading_order(regions)
+
+    def recognize_crops(self, crops):
+        """Read supplied value crops without running detection again."""
+        with self._lock:
+            self.load()
+            import torch
+            with torch.inference_mode():
+                predictions = self.recognizer.predict(crops)
+            if len(predictions) != len(crops):
+                raise RuntimeError('Hezar recognition count differs from crop count')
+            return [str(p['text']) for p in predictions]
 
     def close(self):
         with self._lock:
