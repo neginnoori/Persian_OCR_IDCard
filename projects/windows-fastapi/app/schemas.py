@@ -44,3 +44,22 @@ class ErrorDetail(BaseModel):
 class ErrorResponse(BaseModel):
     request_id: str
     error: ErrorDetail
+
+
+class BatchItem(BaseModel):
+    index: int = Field(ge=0, description='Zero-based input order; independent of filename.')
+    item_id: str
+    status: Literal['completed', 'error']
+    http_status: int
+    result: OCRResponse | None = None
+    error: ErrorDetail | None = None
+
+
+class BatchResponse(BaseModel):
+    request_id: str
+    status: Literal['completed', 'partial_failure', 'failed']
+    total: int
+    completed: int
+    failed: int
+    items: list[BatchItem]
+    elapsed_ms: float

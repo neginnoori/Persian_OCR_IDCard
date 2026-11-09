@@ -122,3 +122,49 @@ py -3.11 -m venv .venv-api-tests
 - [FastAPI و اجرای سرور](https://fastapi.tiangolo.com/deployment/manually/)
 - [نسخه‌های PyTorch و بسته‌های CUDA ویندوز](https://pytorch.org/get-started/previous-versions/)
 - [نصب PaddlePaddle روی Windows](https://www.paddlepaddle.org.cn/documentation/docs/en/install/pip/windows-pip_en.html)
+
+## ارسال چند کارت در یک درخواست — Batch
+
+در Swagger، `POST /v1/ocr/batch` را باز کنید و در فیلد `files` چند تصویر انتخاب کنید. همان API Key نسخهٔ Single استفاده می‌شود. مسیر `POST /v1/ocr` نیز بدون تغییر قابل استفاده است.
+
+نمونه با curl در PowerShell (کلید را از `.env` در متغیر محیطی محلی قرار دهید):
+
+```powershell
+curl.exe -X POST "http://127.0.0.1:8000/v1/ocr/batch" `
+  -H "X-API-Key: $env:OCR_API_KEY" `
+  -F "files=@C:\Cards\card1.jpg" `
+  -F "files=@C:\Cards\card2.png"
+```
+
+`files` برای هر فایل تکرار می‌شود؛ فایل ZIP ورودی پشتیبانی نمی‌شود. `items` دقیقاً ترتیب ورودی را حفظ می‌کند؛ `index` از صفر و `item_id` شناسهٔ مستقل هر مورد است. نام فایل برای تطبیق استفاده نمی‌شود، پس نام‌های تکراری مشکلی ایجاد نمی‌کنند. نام فایل در پاسخ/لاگ ذخیره نمی‌شود.
+
+```json
+{
+  "request_id": "batch-id",
+  "status": "partial_failure",
+  "total": 2,
+  "completed": 1,
+  "failed": 1,
+  "items": [
+    {"index": 0, "item_id": "batch-id:0", "status": "completed", "http_status": 200,
+     "result": {"status": "ocr_candidate", "fields": "همان ساختار شش‌فیلدی پاسخ Single"}, "error": null},
+    {"index": 1, "item_id": "batch-id:1", "status": "error", "http_status": 400,
+     "result": null, "error": {"code": "invalid_image", "message": "The uploaded image cannot be decoded."}}
+  ],
+  "elapsed_ms": 1200
+}
+```
+
+نمونهٔ بالا برای اختصار خلاصه شده است؛ `result` واقعی تمام فیلدهای schema پاسخ Single را دارد. HTTP **200** یعنی گزارش دسته آماده است؛ موفقیت تک‌تک عکس‌ها را از `items` بخوانید. وضعیت کل `completed`، `partial_failure` یا `failed` است. شمارش `completed` فقط تکمیل فنی پردازش است؛ `no_text` یا فیلدهای نیازمند بررسی همچنان ممکن‌اند.
+
+| تنظیم | پیش‌فرض | معنی |
+|---|---|---|
+| `OCR_MAX_BATCH_FILES` | `10` | حداکثر تعداد فایل در یک دسته |
+| `OCR_MAX_BATCH_UPLOAD_MB` | `50` | حداکثر مجموع حجم فایل‌ها برحسب MiB |
+| `OCR_BATCH_TIMEOUT_SECONDS` | `600` | مهلت کل دسته بعد از دریافت/پارس آپلود |
+
+محدودیت هر عکس همان `OCR_MAX_UPLOAD_MB=15` و `OCR_MAX_PIXELS=25000000` است. محدودیت زمان هر عکس همان `OCR_REQUEST_TIMEOUT_SECONDS=180` است. اعتبارسنجی تعداد و مجموع حجم، پیش از OCR انجام می‌شود؛ تخلف پاسخ عمومی 413 می‌دهد. تصویر خراب، فرمت نامعتبر، فایل بیش‌ازحد بزرگ یا خطای مدل، خطای مستقل همان مورد است و پردازش بقیه ادامه پیدا می‌کند.
+
+Batch هم‌زمان مدل‌ها را اجرا نمی‌کند: تمام درخواست‌های Single و Batch از همان صف و worker مشترک استفاده می‌کنند. ممکن است بین دو عکس یک دسته، درخواست دیگری پردازش شود. اگر ظرفیت موجود نباشد، مورد مربوطه 503 می‌گیرد و خودکار دوباره تلاش نمی‌شود. هنگام پایان مهلت کل، نتایج تکمیل‌شده حفظ می‌شوند و موارد شروع‌نشده با `batch_timeout` مشخص می‌شوند. کار GPU شروع‌شده به‌اجبار قطع نمی‌شود و ظرفیتش تا پایان رزرو می‌ماند.
+
+این API همگام است؛ نتیجه در پایان همان درخواست برمی‌گردد. نتیجهٔ پایدار یا job ID برای بازیابی پس از قطع اتصال ندارد. مهلت HTTP کلاینت/reverse proxy باید از مهلت دسته به‌علاوهٔ آپلود بیشتر باشد؛ برای دسته‌های بسیار بزرگ، سرویس job جداگانه لازم است. بعد از دریافت این نسخه، سرویس را متوقف و دوباره اجرا کنید. متغیرهای جدید را می‌توانید به `.env` موجود اضافه کنید؛ در نبودشان پیش‌فرض‌ها اعمال می‌شوند. وابستگی جدیدی اضافه نشده است.

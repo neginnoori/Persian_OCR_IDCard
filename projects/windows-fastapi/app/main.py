@@ -7,8 +7,9 @@ from fastapi.security import APIKeyHeader
 from starlette.exceptions import HTTPException
 from .config import Settings
 from .middleware import RequestGuard, error_response
-from .schemas import OCRResponse, ErrorResponse
+from .schemas import OCRResponse, ErrorResponse, BatchResponse
 from .service import OCRService, ServiceError, create_engine
+from .batch import process_batch
 
 logger = logging.getLogger('card_ocr_api')
 api_key = APIKeyHeader(name='X-API-Key', auto_error=False)
@@ -26,7 +27,7 @@ def create_app(settings=None, engine_factory=create_engine):
         finally:
             await service.close()
 
-    app = FastAPI(title='Persian ID Card OCR', version='1.0.0', lifespan=lifespan,
+    app = FastAPI(title='Persian ID Card OCR', version='1.1.0', lifespan=lifespan,
                   description='Upload a JPEG/PNG card image. Rectification → Paddle detection → Hezar recognition → six fields. OCR candidates require review; this API does not verify identity.')
     app.state.ocr = service
     app.add_middleware(RequestGuard, settings=settings)
@@ -38,7 +39,10 @@ def create_app(settings=None, engine_factory=create_engine):
     @app.exception_handler(RequestValidationError)
     async def validation_error(request, error):
         # Do not echo user-supplied content or filenames in validation details.
-        return error_response(422, request.state.request_id, 'invalid_request', 'Send one image in the multipart field named file.')
+        message = ('Send images as repeated multipart fields named files.'
+                   if request.url.path.rstrip('/') == '/v1/ocr/batch'
+                   else 'Send one image in the multipart field named file.')
+        return error_response(422, request.state.request_id, 'invalid_request', message)
 
     @app.exception_handler(HTTPException)
     async def http_error(request, error):
@@ -72,6 +76,15 @@ def create_app(settings=None, engine_factory=create_engine):
             # No exception messages, image contents, names, IDs, or paths in logs.
             logger.error('OCR failed request_id=%s type=%s', request.state.request_id, type(error).__name__)
             raise ServiceError(500, 'inference_failed', 'OCR processing failed. Use request_id for support.') from None
+
+    @app.post('/v1/ocr/batch', tags=['OCR'], response_model=BatchResponse,
+              summary='Process several card images in input order',
+              description='Repeat the multipart field files. Each item has its own result or error. HTTP 200 means the batch report is available, not that every image succeeded. Models still run sequentially.',
+              responses={code:{'model':ErrorResponse} for code in (400,401,408,413,422,503)})
+    async def ocr_batch(request: Request,
+                        files: Annotated[list[UploadFile], File(description='JPEG/PNG images, up to OCR_MAX_BATCH_FILES.')],
+                        key: Annotated[str | None, Security(api_key)] = None):
+        return await process_batch(files, service, settings, request.state.request_id)
 
     return app
 

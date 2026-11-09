@@ -8,6 +8,9 @@ class Settings(BaseSettings):
     api_key: SecretStr
     model_dir: Path = Path('./models')
     max_upload_mb: int = Field(default=15, ge=1, le=100)
+    max_batch_files: int = Field(default=10, ge=1, le=50)
+    max_batch_upload_mb: int = Field(default=50, ge=1, le=200)
+    batch_timeout_seconds: float = Field(default=600, gt=0, le=3600)
     max_pixels: int = Field(default=25_000_000, ge=1024, le=100_000_000)
     max_pending: int = Field(default=2, ge=0, le=16)
     request_timeout_seconds: float = Field(default=180, gt=0, le=1800)
@@ -24,3 +27,7 @@ class Settings(BaseSettings):
     @property
     def upload_bytes(self):
         return self.max_upload_mb * 1024 * 1024
+
+    @property
+    def batch_upload_bytes(self):
+        return self.max_batch_upload_mb * 1024 * 1024

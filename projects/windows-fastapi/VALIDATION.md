@@ -1,6 +1,6 @@
 # Validation
 
-- Python 3.11 API contract suite: 16 passed on macOS, using injected OCR engines.
+- Python 3.11 API contract suite: 25 passed on macOS, using injected OCR engines.
 - Combined OCR regression suite: 44 passed, including startup-failure process cleanup.
 - Pinned API dependencies resolve to Windows x64/Python 3.11 distributions.
 - Swagger HTML and OpenAPI multipart/API-key schemas checked through TestClient.
@@ -19,3 +19,5 @@ FastAPI CDN assets; browser internet access is needed unless those assets are se
 Requests are synchronous. A 504 response does not interrupt an already-running GPU call;
 the slot stays occupied until it ends. The queue is in-process, not durable. Run one server
 worker and do not use reload. API errors do not expose exception details or uploaded filenames.
+
+Batch regressions cover mixed/all failures, preserved order with duplicate filenames, shared serialized inference, authentication and Swagger list schema, count/aggregate/per-file limits, chunked upload limits, deadline partial results, cancellation and file cleanup.

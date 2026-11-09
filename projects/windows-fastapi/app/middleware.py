@@ -27,7 +27,8 @@ class RequestGuard:
                                       if k.lower() not in (b'cache-control', b'x-request-id')] + [
                     (b'cache-control', b'no-store'), (b'x-request-id', request_id.encode())]
             await send(message)
-        if scope['path'].rstrip('/') != '/v1/ocr':
+        path = scope['path'].rstrip('/')
+        if path not in ('/v1/ocr', '/v1/ocr/batch'):
             return await self.app(scope, receive, safe_send)
         async def reject(status, code, message):
             await error_response(status, request_id, code, message)(scope, receive, send)
@@ -38,7 +39,8 @@ class RequestGuard:
             return await reject(401, 'unauthorized', 'A valid X-API-Key is required.')
         if self.active_uploads >= self.settings.max_pending + 1:
             return await reject(503, 'queue_full', 'OCR is busy; retry later.')
-        limit = self.settings.upload_bytes + 1024 * 1024  # bounded multipart overhead
+        limit = (self.settings.batch_upload_bytes if path == '/v1/ocr/batch'
+                 else self.settings.upload_bytes) + 1024 * 1024  # bounded multipart overhead
         try:
             declared = int(headers.get(b'content-length', b'0'))
         except ValueError:

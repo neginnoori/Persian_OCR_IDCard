@@ -16,7 +16,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\run.ps1
 Target: Windows x64, Python 3.11 x64, NVIDIA GPU with a suitable CUDA driver.
 After startup, open **http://127.0.0.1:8000/docs**. Copy the generated `OCR_API_KEY`
 from the private `.env` into Swagger's Authorize dialog, then upload a JPEG/PNG to
-`POST /v1/ocr` using the `file` field.
+`POST /v1/ocr` using the `file` field. For multiple images use `POST /v1/ocr/batch`
+with repeated `files` fields (default 10 files / 50 MiB total); each image has an independent result or error.
 
 Dependencies: [main requirements](projects/windows-fastapi/requirements.txt),
 [API](projects/windows-fastapi/requirements-api.txt),

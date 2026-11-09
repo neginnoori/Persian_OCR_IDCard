@@ -98,7 +98,7 @@ class OCRService:
             processed_image_size=result.image.size if result.image is not None else None,
             processing_ms=round((perf_counter()-started)*1000, 2))
 
-    async def process(self, data, request_id):
+    async def process(self, data, request_id, *, timeout=None):
         with self.lock:
             if not self.ready:
                 raise ServiceError(503, 'not_ready', 'OCR models are not ready.')
@@ -116,7 +116,7 @@ class OCRService:
         # stays reserved until _finished; never start overlapping model inference.
         wrapped = asyncio.wrap_future(future)
         try:
-            return await asyncio.wait_for(asyncio.shield(wrapped), self.settings.request_timeout_seconds)
+            return await asyncio.wait_for(asyncio.shield(wrapped), self.settings.request_timeout_seconds if timeout is None else timeout)
         except (TimeoutError, asyncio.CancelledError) as error:
             future.cancel()
             wrapped.add_done_callback(lambda f: f.exception() if not f.cancelled() else None)
