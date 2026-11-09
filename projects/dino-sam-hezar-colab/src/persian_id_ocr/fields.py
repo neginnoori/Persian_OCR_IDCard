@@ -26,21 +26,38 @@ def assign_fields(regions, size, *, frame=None):
             continue
         x1, y1, x2, y2 = region['box']
         cx, cy = (x1+x2-2*left)/(2*width), (y1+y2-2*top)/(2*height)
-        # Exclude portrait, heading and the label column. Never use known answers.
-        if not (.38 <= cx <= .81 and (x2-left)/width <= .85):
-            continue
         distances = [abs(cy-center) for center in CENTERS]
         row = min(range(6), key=lambda i: distances[i])
         ordered = sorted(distances)
         if distances[row] > .055 or ordered[1]-ordered[0] < .012:
             continue
-        grouped[row].append((index, region))
+        # Paddle can merge a numeric value with its label. Admit that region
+        # only in the expected row, spanning the value and label columns.
+        normal_value = .38 <= cx <= .81 and (x2-left)/width <= .85
+        normalized = normalize_text(region['text_raw'])
+        mixed_numeric = (
+            row in (0, 3, 5)
+            and .38 <= (x1-left)/width <= .79
+            and .85 < (x2-left)/width <= 1.02
+            and re.search(r'[0-9]', normalized) is not None
+        )
+        if not (normal_value or mixed_numeric):
+            continue
+        item = dict(region)
+        if mixed_numeric:
+            # Preserve the full OCR string for audit; extract one numeric run.
+            # Never fill missing digits or pick one of several unrelated numbers.
+            runs = re.findall(r'[0-9]+(?:[ /]*[0-9]+)*', normalized)
+            item['field_value'] = re.sub(r'\s+', '', runs[0]) if len(runs) == 1 else normalized
+            item['mixed_label_value'] = True
+        grouped[row].append((index, item))
     output = []
     for (field, label), items in zip(FIELDS, grouped):
         numeric = field in ('national_id', 'date_of_birth', 'expiry_date')
         items.sort(key=lambda item: item[1]['box'][0], reverse=not numeric)
         raw = ('' if numeric else ' ').join(str(r['text_raw']) for _, r in items)
-        value = normalize_text(raw)
+        value = normalize_text(('' if numeric else ' ').join(
+            str(r.get('field_value', r['text_raw'])) for _, r in items))
         box = None
         if items:
             boxes = [r['box'] for _, r in items]
@@ -54,5 +71,5 @@ def assign_fields(regions, size, *, frame=None):
         output.append({'field': field, 'label': label, 'text_raw': raw, 'value': value or None,
                        'box': box, 'source_region_ids': [i for i, _ in items],
                        'status': status, 'review_required': True,
-                       'assignment_method': 'card_frame_layout_approximate_v1' if frame is not None else 'standard_front_layout_v1'})
+                       'assignment_method': ('card_frame_layout_approximate_v2' if frame is not None else 'standard_front_layout_v2')})
     return output
