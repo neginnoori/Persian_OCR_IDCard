@@ -85,7 +85,7 @@ class TorchBackend:
             ) from error
 
     def detect_masks(self, pil):
-        """Return SAM candidates for the highest-scoring DINO card detection."""
+        """Return SAM candidates for up to three DINO detections."""
         torch = self.torch
         width, height = pil.size
         try:
@@ -99,19 +99,23 @@ class TorchBackend:
                 text_threshold=self.config.text_threshold, target_sizes=[(height, width)])[0]
             if len(detection['boxes']) == 0:
                 return Detection([], [], None)
-            best = int(detection['scores'].argmax())
-            box = detection['boxes'][best].detach().cpu().tolist()
-            score = float(detection['scores'][best])
-            sam_inputs = self.sam_processor(images=pil, input_boxes=[[box]], return_tensors="pt").to(self.device)
-            with torch.inference_mode():
-                sam_outputs = self.sam(**sam_inputs, multimask_output=True)
-            masks = self.sam_processor.image_processor.post_process_masks(
-                sam_outputs.pred_masks.cpu(), sam_inputs['original_sizes'].cpu(),
-                sam_inputs['reshaped_input_sizes'].cpu())[0]
-            masks = masks.reshape(-1, height, width).numpy() > 0
-            scores = sam_outputs.iou_scores.detach().cpu().numpy().reshape(-1)
-            return Detection([m.astype(np.uint8) for m in masks],
-                             [float(value) for value in scores], score)
+            # Segment several detections instead of committing to one rectangle.
+            ranked = detection['scores'].argsort(descending=True)[:3]
+            all_masks, all_scores = [], []
+            for index in ranked:
+                box = detection['boxes'][int(index)].detach().cpu().tolist()
+                sam_inputs = self.sam_processor(images=pil, input_boxes=[[box]], return_tensors="pt").to(self.device)
+                with torch.inference_mode():
+                    sam_outputs = self.sam(**sam_inputs, multimask_output=True)
+                masks = self.sam_processor.image_processor.post_process_masks(
+                    sam_outputs.pred_masks.cpu(), sam_inputs['original_sizes'].cpu(),
+                    sam_inputs['reshaped_input_sizes'].cpu())[0]
+                masks = masks.reshape(-1, height, width).numpy() > 0
+                scores = sam_outputs.iou_scores.detach().cpu().numpy().reshape(-1)
+                all_masks.extend(m.astype(np.uint8) for m in masks)
+                all_scores.extend(float(value) for value in scores)
+            return Detection(all_masks, all_scores, float(detection['scores'].max()))
+
         except torch.cuda.OutOfMemoryError as error:
             raise InferenceError(
                 "GPU memory exhausted. Reuse one extractor per process and avoid concurrent "
@@ -119,3 +123,4 @@ class TorchBackend:
             ) from error
         except Exception as error:
             raise InferenceError(f"Card detection/segmentation failed: {error}") from error
+

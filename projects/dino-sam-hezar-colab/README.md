@@ -35,3 +35,9 @@ The archive includes the local cardid-extractor package, setup scripts and noteb
 
 ## Colab: synchronized source and installed code
 Open `DINO_SAM_Hezar_Colab.ipynb` from this branch and run cells in order with a T4 runtime. The first cell downloads a pinned source commit directly, without the GitHub API; no project ZIP or manual geometry patch is needed. Installation force-reinstalls both local packages. Before processing, `verify_install.py` compares every source module with the installed file and stops on stale code. The result ZIP records the source commit in `source_version.json`. To update an existing session, rerun source download and installation before processing. GPU inference accuracy must still be checked on real images; source verification is not an OCR accuracy check.
+
+### Candidate selection and stamp rejection
+
+DINO now supplies up to three detections for SAM. Distinct quadrilaterals are ranked using Persian card-label and portrait evidence before geometry quality. This is a heuristic, not a trained card-type classifier. When no crop has sufficient evidence, best-effort mode rotates and OCRs the full input and leaves structured fields unavailable rather than assigning stamp text as identity fields. A manual orientation override remains an explicit bypass of this evidence check. Multiple supported cards are not yet independently returned.
+
+Validation: orchestration tests cover rejecting a stamp and selecting a lower-SAM-score card with label evidence. Full CUDA inference on the reported real scans remains unverified; additional candidate scoring increases runtime.
