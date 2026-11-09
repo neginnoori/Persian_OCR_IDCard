@@ -34,9 +34,9 @@ def run_batch(inputs, output_root, cache_dir, *, pipeline=None, orientation_over
                     marked.save(folder/'text_boxes.png')
             import csv
             with (folder/'fields.csv').open('w', newline='', encoding='utf-8-sig') as handle:
-                writer = csv.DictWriter(handle, fieldnames=['field','label','text_raw','value','box','source_region_ids','status','review_required','assignment_method'])
+                writer = csv.DictWriter(handle, fieldnames=['field','label','text_raw','value','box','source_region_ids','status','review_required','assignment_method','numeric_retry'])
                 writer.writeheader()
-                writer.writerows(result.fields)
+                writer.writerows({**item, 'numeric_retry': json.dumps(item.get('numeric_retry'), ensure_ascii=False)} for item in result.fields)
             if result.image is not None:
                 marked_fields = result.image.copy()
                 draw_fields = ImageDraw.Draw(marked_fields)
