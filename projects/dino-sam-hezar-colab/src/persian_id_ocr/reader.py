@@ -165,6 +165,17 @@ class HezarReader:
                     region.update(text_raw=raw, text=normalize_text(raw))
             return reading_order(regions)
 
+    def recognize_crops(self, crops):
+        """Read supplied value crops without running detection again."""
+        with self._lock:
+            self.load()
+            import torch
+            with torch.inference_mode():
+                predictions = self.recognizer.predict(crops)
+            if len(predictions) != len(crops):
+                raise RuntimeError('Hezar recognition count differs from crop count')
+            return [str(p['text']) for p in predictions]
+
     def close(self):
         with self._lock:
             if self.detector is not None and hasattr(self.detector, 'close'):
