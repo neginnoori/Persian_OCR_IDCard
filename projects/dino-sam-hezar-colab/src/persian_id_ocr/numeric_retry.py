@@ -36,15 +36,23 @@ def retry_numeric_fields(image, fields, recognize, *, frame=None):
         values = [re.sub(r'\s+', '', normalize_text(t)) for t in raws]
         pattern = (r'[0-9]{10}' if item['field'] == 'national_id' else
                    r'1[234][0-9]{2}/(?:0[1-9]|1[0-2])/(?:0[1-9]|[12][0-9]|3[01])')
-        accepted = values[0] == values[1] and re.fullmatch(pattern, values[0]) is not None
-        if item['status'] == 'candidate' and values[0] != item['value']:
-            accepted = False  # Do not silently replace a conflicting valid first reading.
+        valid_indices = [i for i, value in enumerate(values) if re.fullmatch(pattern, value)]
+        valid_values = {values[i] for i in valid_indices}
+        accepted = len(valid_values) == 1
+        selected = valid_indices[0] if accepted else None
+        reason = ('agreement' if accepted and len(valid_indices) == 2 else
+                  'single_valid_candidate' if accepted else 'no_unique_valid_candidate')
+        if accepted and item['status'] == 'candidate' and values[selected] != item['value']:
+            accepted = False
+            reason = 'conflicts_with_original_candidate'
         item['numeric_retry'] = {'method': 'value_column_crop_two_margins_v1',
                                  'texts': list(raws), 'values': values,
                                  'crop_boxes': crop_boxes, 'accepted': accepted,
+                                 'selection_reason': reason,
+                                 'selected_index': selected if accepted else None,
                                  'original_value': item['value'], 'original_box': box}
         if accepted:
-            item.update(value=values[0], status='candidate', box=crop_boxes[0],
+            item.update(value=values[selected], status='candidate', box=crop_boxes[selected],
                         assignment_method=item['assignment_method']+'+numeric_retry')
         # Raw detector text and source IDs remain untouched; agreement is not proof.
         item['review_required'] = True

@@ -43,3 +43,13 @@ def test_no_retry_without_value_column_evidence():
     def unexpected(crops):
         raise AssertionError('must not guess column')
     assert retry_numeric_fields(Image.new('RGB',(856,540)), fields, unexpected) == fields
+
+
+def test_single_valid_retry_is_reviewable_candidate_not_discarded():
+    answers = iter([['۱۲۳۴۵۶۷۸۹۰', '۲۳۴۵۶۷۸۹۰ه'], ['۱۴۰۳/۱۲/۲۳', '۰۴۰۳/۰۲/۳۳']])
+    rows = retry_numeric_fields(Image.new('RGB',(856,540)), sample(), lambda crops: next(answers))
+    assert rows[0]['value'] == '1234567890'
+    assert rows[5]['value'] == '1403/12/23'
+    assert rows[0]['numeric_retry']['selection_reason'] == 'single_valid_candidate'
+    assert rows[0]['review_required'] and rows[5]['review_required']
+    assert rows[0]['numeric_retry']['original_value'] == '560377826'
