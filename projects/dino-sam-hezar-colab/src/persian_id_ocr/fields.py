@@ -58,6 +58,23 @@ def assign_fields(regions, size, *, frame=None):
         raw = ('' if numeric else ' ').join(str(r['text_raw']) for _, r in items)
         value = normalize_text(('' if numeric else ' ').join(
             str(r.get('field_value', r['text_raw'])) for _, r in items))
+        if not numeric and items:
+            # Start at the value column's rightmost region. Extend toward the
+            # left only across small word gaps on the same baseline.
+            ordered_items = sorted(items, key=lambda pair: pair[1]['box'][2], reverse=True)
+            kept = [ordered_items[0]]
+            for candidate in ordered_items[1:]:
+                a = kept[-1][1]['box']
+                b = candidate[1]['box']
+                ah, bh = a[3]-a[1], b[3]-b[1]
+                overlap = max(0, min(a[3], b[3])-max(a[1], b[1]))
+                gap = max(0, a[0]-b[2])
+                if min(ah, bh) <= 0 or overlap/min(ah, bh) < .65 or gap > .65*min(ah, bh):
+                    break
+                kept.append(candidate)
+            items = kept
+            raw = ' '.join(str(r['text_raw']) for _, r in items)
+            value = normalize_text(raw)
         numeric_unresolved = False
         if numeric:
             # Extract complete numeric runs per region; never join unrelated

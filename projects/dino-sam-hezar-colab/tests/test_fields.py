@@ -76,3 +76,26 @@ def test_unrelated_numbers_are_not_concatenated_and_leading_zero_survives():
     rows = assign_fields([{'box':[450,140,680,170], 'text_raw':'۱۲۳۴ مهر ۵۶۷۸۹۰'}],(856,540))
     assert rows[0]['value'] is None
     assert rows[0]['status'] == 'invalid_format'
+
+
+def test_names_do_not_merge_with_distant_stamp_regions():
+    rows = assign_fields([
+        {'box':[585,192,669,232], 'text_raw':'فاطمه'},
+        {'box':[266,186,419,218], 'text_raw':'متن مهر'},
+        {'box':[505,245,669,297], 'text_raw':'آقائی ملایری'},
+        {'box':[313,233,381,255], 'text_raw':'نوشته مهر'},
+    ], (856,540))
+    assert rows[1]['value'] == 'فاطمه'
+    assert rows[1]['source_region_ids'] == [0]
+    assert rows[2]['value'] == 'آقائی ملایری'
+    assert rows[2]['source_region_ids'] == [2]
+
+
+def test_adjacent_words_of_long_name_are_preserved():
+    rows = assign_fields([
+        {'box':[600,240,680,278], 'text_raw':'نام'},
+        {'box':[510,241,590,279], 'text_raw':'خانوادگی'},
+        {'box':[420,242,500,280], 'text_raw':'بلند'},
+    ], (856,540))
+    assert rows[2]['value'] == 'نام خانوادگی بلند'
+    assert rows[2]['source_region_ids'] == [0,1,2]
