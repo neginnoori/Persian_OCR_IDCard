@@ -55,3 +55,24 @@ def test_label_only_and_multiple_numbers_do_not_become_valid_id():
         {'box': [483, 134, 841, 180], 'text_raw': '۱۲۳۴۵۶ شماره ۷۸۹۰'},
     ], (856, 540))
     assert rows[0]['status'] == 'invalid_format'
+
+
+def test_numeric_values_exclude_stamp_text_and_keep_source_box():
+    rows = assign_fields([
+        {'box':[273,136,419,191], 'text_raw':'چثگگگگ'},
+        {'box':[473,136,672,178], 'text_raw':'۳۹۳۲۶۵۲۹۳۲'},
+        {'box':[273,294,459,370], 'text_raw':'کپی برابر اصل است'},
+        {'box':[475,308,661,345], 'text_raw':'۱۳۵۰/۰۴/۰۱'},
+    ], (856,540))
+    assert rows[0]['value'] == '3932652932'
+    assert rows[0]['source_region_ids'] == [1]
+    assert rows[3]['value'] == '1350/04/01'
+    assert rows[3]['source_region_ids'] == [3]
+
+
+def test_unrelated_numbers_are_not_concatenated_and_leading_zero_survives():
+    rows = assign_fields([{'box':[450,140,680,170], 'text_raw':'کد ملی ۰۰۱۲۳۴۵۶۷۸'}],(856,540))
+    assert rows[0]['value'] == '0012345678'
+    rows = assign_fields([{'box':[450,140,680,170], 'text_raw':'۱۲۳۴ مهر ۵۶۷۸۹۰'}],(856,540))
+    assert rows[0]['value'] is None
+    assert rows[0]['status'] == 'invalid_format'
