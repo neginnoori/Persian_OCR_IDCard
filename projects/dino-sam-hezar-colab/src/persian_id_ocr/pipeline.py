@@ -36,12 +36,14 @@ class PersianCardOCR:
     Opt into rectify mode for the previous strict perspective/geometry gate.
     """
     def __init__(self, cache_dir='./models', *, hezar_device='cuda', batch_size=8,
-                 extractor=None, reader=None, detector_backend='paddle', detector_device=None, preprocessing='rectify_best_effort'):
+                 extractor=None, reader=None, detector_backend='paddle', detector_device=None, preprocessing='rectify_best_effort', candidate_selection='legacy'):
         if preprocessing not in ('orientation_only', 'rectify', 'rectify_best_effort'):
             raise ValueError('preprocessing must be orientation_only, rectify or rectify_best_effort')
+        if candidate_selection not in ('legacy', 'v2'):
+            raise ValueError('candidate_selection must be legacy or v2')
         self.preprocessing = preprocessing
         cache = Path(cache_dir)
-        self.extractor = extractor if extractor is not None else CardExtractor(ExtractorConfig(cache_dir=cache/'extraction'))
+        self.extractor = extractor if extractor is not None else CardExtractor(ExtractorConfig(cache_dir=cache/'extraction', candidate_selection=candidate_selection))
         self.reader = reader if reader is not None else HezarReader(cache/'hezar', device=hezar_device, batch_size=batch_size, detector_backend=detector_backend, detector_device=detector_device)
         self._lock = RLock()
 
@@ -66,6 +68,8 @@ class PersianCardOCR:
                     effective_mode = 'orientation_only'
                     warnings.append('rectification_unavailable_orientation_only_fallback')
                     warnings.extend(extraction.metadata.get('warnings', []))
+            if extraction.metadata.get('field_assignment_mode') == 'anchors_v1':
+                effective_mode = 'orientation_only'
             extracted_at = perf_counter()
             metadata = {'extraction': extraction.to_dict(), 'coordinate_space': ('oriented_input' if effective_mode == 'orientation_only' else 'extracted_card'),
                         'preprocessing_mode': self.preprocessing,
@@ -91,8 +95,15 @@ class PersianCardOCR:
                 # OCR still runs on the whole image; no card layout was located.
                 field_regions = []
             metadata['field_assignment'] = 'approximate_card_frame' if frame else ('unavailable' if effective_mode == 'orientation_only' else 'rectified_template')
-            fields = assign_fields(field_regions, extraction.image.size, frame=frame)
-            if hasattr(self.reader, 'recognize_crops') and field_regions:
+            anchor_mode = extraction.metadata.get('field_assignment_mode') == 'anchors_v1'
+            if anchor_mode:
+                from .anchors import assign_anchored_fields
+                fields, anchor_audit = assign_anchored_fields(regions, extraction.image.size)
+                metadata['field_assignment'] = 'label_anchors_v1'
+                metadata['anchor_assignment'] = anchor_audit
+            else:
+                fields = assign_fields(field_regions, extraction.image.size, frame=frame)
+            if hasattr(self.reader, 'recognize_crops') and field_regions and not anchor_mode:
                 from .numeric_retry import retry_numeric_fields
                 fields = retry_numeric_fields(extraction.image, fields,
                                               self.reader.recognize_crops, frame=frame)

@@ -1,5 +1,5 @@
 """Lazy GPU model loading and inference, using the notebook's model IDs and thresholds."""
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 import os
 import cv2
@@ -15,6 +15,8 @@ class Detection:
     masks: list[np.ndarray]
     sam_scores: list[float]
     dino_score: float | None
+    candidates: list[dict] = field(default_factory=list)
+    mask_sources: list[dict] = field(default_factory=list)
 
 
 def require_cuda(torch, device):
@@ -92,7 +94,11 @@ class TorchBackend:
         """Bounded recovery only: segment the next two DINO detections."""
         return self._detect_masks(pil, alternatives=True)
 
-    def _detect_masks(self, pil, *, alternatives):
+    def detect_diverse_masks(self, pil):
+        """Opt-in: up to four distinct proposals; preserve nested larger boxes."""
+        return self._detect_masks(pil, alternatives=False, diverse=True)
+
+    def _detect_masks(self, pil, *, alternatives, diverse=False):
         torch = self.torch
         width, height = pil.size
         try:
@@ -109,6 +115,12 @@ class TorchBackend:
             best = int(detection['scores'].argmax())
             order = detection['scores'].argsort(descending=True).detach().cpu().tolist()
             indices = [index for index in order if index != best][:2] if alternatives else [best]
+            audit = []
+            if diverse:
+                from .selection import diverse_boxes
+                indices, audit = diverse_boxes(
+                    detection['boxes'].detach().cpu().tolist(),
+                    detection['scores'].detach().cpu().tolist())
             if len(indices) == 0:
                 return Detection([], [], None)
             boxes = detection['boxes'][indices].detach().cpu().tolist()
@@ -122,7 +134,13 @@ class TorchBackend:
             masks = masks.reshape(-1, height, width).numpy() > 0
             scores = sam_outputs.iou_scores.detach().cpu().numpy().reshape(-1)
             return Detection([m.astype(np.uint8) for m in masks],
-                             [float(value) for value in scores], score)
+                             [float(value) for value in scores], score,
+                             candidates=audit,
+                             mask_sources=[{'dino_box': boxes[i],
+                                            'dino_score': float(detection['scores'][indices[i]]),
+                                            'dino_index': indices[i]}
+                                           for i in range(len(boxes))
+                                           for _ in range(len(scores)//len(boxes))])
         except torch.cuda.OutOfMemoryError as error:
             raise InferenceError(
                 "GPU memory exhausted. Reuse one extractor per process and avoid concurrent "

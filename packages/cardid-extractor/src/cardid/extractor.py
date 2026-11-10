@@ -132,6 +132,9 @@ class CardExtractor:
             detection = backend.detect_masks(pil)
             metadata = {"original_size": list(pil.size), "dino_score": detection.dino_score,
                         "coordinate_space": "exif_corrected_input", "runtime": self.runtime_info}
+            if self.config.candidate_selection == 'v2' and not detection.masks:
+                from .selection import select_card_v2
+                return select_card_v2(pil, backend, self.config, None, orientation_override)
             if not detection.masks:
                 metadata['elapsed_ms'] = (perf_counter()-started)*1000
                 return ExtractionResult("not_found", reason="no_card_detection", metadata=metadata)
@@ -143,6 +146,9 @@ class CardExtractor:
                     continue
                 metrics['sam_predicted_iou'] = sam_score
                 proposals.append((quad, metrics))
+            if self.config.candidate_selection == 'v2' and not proposals:
+                from .selection import select_card_v2
+                return select_card_v2(pil, backend, self.config, None, orientation_override)
             if not proposals:
                 metadata['elapsed_ms'] = (perf_counter()-started)*1000
                 return ExtractionResult("needs_review", reason="no_reliable_quadrilateral", metadata=metadata)
@@ -157,7 +163,7 @@ class CardExtractor:
             except Exception as error:
                 # Runtime/model errors must be visible to the service, not silently accepted.
                 raise InferenceError(f"Card rectification/orientation failed: {error}") from error
-            if orientation_override is None:
+            if orientation_override is None and self.config.candidate_selection == "legacy":
                 from .recovery import recover_stamp_candidate
                 chosen, orientation, metrics, recovery = recover_stamp_candidate(
                     pil, backend, self.config, chosen, orientation, metrics)
@@ -174,6 +180,10 @@ class CardExtractor:
                 reasons.append("unreliable_geometry")
             if not orientation['orientation_ok']:
                 reasons.append("ambiguous_orientation")
-            return ExtractionResult("needs_review" if reasons else "ok", image=output,
-                                    reason=",".join(reasons) or None, metadata=metadata)
+            result = ExtractionResult("needs_review" if reasons else "ok", image=output,
+                                      reason=",".join(reasons) or None, metadata=metadata)
+            if self.config.candidate_selection == 'v2':
+                from .selection import select_card_v2
+                result = select_card_v2(pil, backend, self.config, result, orientation_override)
+            return result
 

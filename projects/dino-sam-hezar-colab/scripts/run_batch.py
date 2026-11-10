@@ -8,12 +8,41 @@ from PIL import ImageDraw
 from persian_id_ocr import PersianCardOCR
 
 
+def save_selection_audit(source, report, folder):
+    from cardid.images import normalize_image
+    audit = report.get('metadata', {}).get('extraction', {}).get('metadata', {}).get('candidate_selection')
+    if audit is None:
+        return
+    (folder/'candidate_selection.json').write_text(json.dumps(audit, ensure_ascii=False, indent=2), encoding='utf-8')
+    original = normalize_image(source)
+    original.thumbnail((1200,1200))
+    width, height = report['metadata']['extraction']['metadata']['original_size']
+    sx, sy = original.width/width, original.height/height
+    draw = ImageDraw.Draw(original)
+    for row in audit.get('detections', []):
+        x1,y1,x2,y2 = row['box']
+        draw.rectangle([x1*sx,y1*sy,x2*sx,y2*sy], outline='orange', width=2)
+        draw.text((x1*sx,y1*sy), f"D{row['dino_index']} {row['reason']}", fill='orange')
+    for row in audit.get('candidates', []):
+        if 'quad' not in row:
+            continue
+        points = [(x*sx,y*sy) for x,y in row['quad']]
+        selected = row['id'] == audit.get('selected_id')
+        color = 'lime' if selected else 'red'
+        draw.line(points+[points[0]], fill=color, width=3)
+        draw.text(points[0], row['id']+' '+row['reason'], fill=color)
+    if audit.get('baseline_quad'):
+        points = [(x*sx,y*sy) for x,y in audit['baseline_quad']]
+        draw.line(points+[points[0]], fill='blue', width=2)
+    original.save(folder/'candidate_boxes.png')
+
+
 def run_batch(inputs, output_root, cache_dir, *, pipeline=None, orientation_override=None,
-              detector_backend='paddle', detector_device=None, preprocessing='rectify_best_effort'):
+              detector_backend='paddle', detector_device=None, preprocessing='rectify_best_effort', candidate_selection='legacy'):
     run = Path(output_root)/datetime.now(timezone.utc).strftime('run_%Y%m%d_%H%M%S_%f')
     run.mkdir(parents=True, exist_ok=False)
     pipeline = pipeline if pipeline is not None else PersianCardOCR(
-        cache_dir, detector_backend=detector_backend, detector_device=detector_device, preprocessing=preprocessing)
+        cache_dir, detector_backend=detector_backend, detector_device=detector_device, preprocessing=preprocessing, candidate_selection=candidate_selection)
     summary = []
     for index, source in enumerate(inputs):
         name = re.sub(r'[^\w.-]', '_', Path(source).stem)[:80] or 'image'
@@ -22,6 +51,7 @@ def run_batch(inputs, output_root, cache_dir, *, pipeline=None, orientation_over
         try:
             result = pipeline.process(source, orientation_override=orientation_override)
             report = result.to_dict()
+            save_selection_audit(source, report, folder)
             if result.image is not None:
                 accepted = result.status in ('ocr_candidate', 'no_text')
                 result.image.save(folder/('card.png' if accepted else 'card_needs_review.png'))
@@ -66,10 +96,11 @@ def main():
     parser.add_argument('--text-detector', choices=['paddle','craft'], default='paddle')
     parser.add_argument('--paddle-device', choices=['cpu','gpu:0'])
     parser.add_argument('--preprocessing', choices=['orientation_only', 'rectify', 'rectify_best_effort'], default='rectify_best_effort')
+    parser.add_argument('--candidate-selection', choices=['legacy', 'v2'], default='legacy')
     args = parser.parse_args()
     run, summary = run_batch(args.inputs, args.output_root, args.cache_dir,
                              orientation_override=args.orientation_override,
-                             detector_backend=args.text_detector, detector_device=args.paddle_device, preprocessing=args.preprocessing)
+                             detector_backend=args.text_detector, detector_device=args.paddle_device, preprocessing=args.preprocessing, candidate_selection=args.candidate_selection)
     print('Results:', run, flush=True)
     return 1 if any(r['status'] == 'error' for r in summary) else (
         2 if any(r['status'] != 'ocr_candidate' for r in summary) else 0)

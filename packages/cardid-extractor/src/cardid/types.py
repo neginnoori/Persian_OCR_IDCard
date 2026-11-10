@@ -17,8 +17,11 @@ class ExtractorConfig:
     text_threshold: float = .20
     min_quad_iou: float = .88
     min_orientation_margin: float = 1.2
+    candidate_selection: str = "legacy"
 
     def __post_init__(self):
+        if self.candidate_selection not in ("legacy", "v2"):
+            raise ValueError("candidate_selection must be legacy or v2")
         if self.device not in ("cuda", "cuda:0"):
             raise ValueError("Only CUDA GPU 0 is supported: device='cuda' or 'cuda:0'")
         if not isinstance(self.width, int) or not isinstance(self.height, int) or min(self.width, self.height) < 32:
@@ -50,3 +53,4 @@ class ExtractionResult:
     def to_dict(self) -> dict[str, Any]:
         """JSON-safe diagnostics, deliberately excluding image pixels."""
         return {"status": self.status, "reason": self.reason, "metadata": self.metadata}
+
