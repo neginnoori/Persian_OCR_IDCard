@@ -15,6 +15,7 @@ class Detection:
     masks: list[np.ndarray]
     sam_scores: list[float]
     dino_score: float | None
+    mask_dino_scores: list[float] | None = None
 
 
 def require_cuda(torch, device):
@@ -85,7 +86,7 @@ class TorchBackend:
             ) from error
 
     def detect_masks(self, pil):
-        """Return SAM candidates for the highest-scoring DINO card detection."""
+        """Segment up to three distinct DINO boxes with one SAM image encoding."""
         torch = self.torch
         width, height = pil.size
         try:
@@ -97,21 +98,26 @@ class TorchBackend:
             detection = self.dino_processor.post_process_grounded_object_detection(
                 outputs, inputs.input_ids, threshold=self.config.box_threshold,
                 text_threshold=self.config.text_threshold, target_sizes=[(height, width)])[0]
-            if len(detection['boxes']) == 0:
+            boxes = detection['boxes'].detach().cpu().numpy()
+            scores = detection['scores'].detach().cpu().numpy()
+            xywh = np.column_stack((boxes[:, :2], boxes[:, 2:] - boxes[:, :2]))
+            indices = cv2.dnn.NMSBoxes(xywh.tolist(), scores.tolist(), 0.0, .75)
+            if len(indices) == 0:
                 return Detection([], [], None)
-            best = int(detection['scores'].argmax())
-            box = detection['boxes'][best].detach().cpu().tolist()
-            score = float(detection['scores'][best])
-            sam_inputs = self.sam_processor(images=pil, input_boxes=[[box]], return_tensors="pt").to(self.device)
+            indices = np.asarray(indices).reshape(-1)[:3]
+            sam_inputs = self.sam_processor(
+                images=pil, input_boxes=[boxes[indices].tolist()], return_tensors="pt").to(self.device)
             with torch.inference_mode():
                 sam_outputs = self.sam(**sam_inputs, multimask_output=True)
             masks = self.sam_processor.image_processor.post_process_masks(
                 sam_outputs.pred_masks.cpu(), sam_inputs['original_sizes'].cpu(),
                 sam_inputs['reshaped_input_sizes'].cpu())[0]
             masks = masks.reshape(-1, height, width).numpy() > 0
-            scores = sam_outputs.iou_scores.detach().cpu().numpy().reshape(-1)
+            sam_scores = sam_outputs.iou_scores.detach().cpu().numpy()
+            dino_scores = np.repeat(scores[indices], sam_scores.shape[-1])
             return Detection([m.astype(np.uint8) for m in masks],
-                             [float(value) for value in scores], score)
+                             sam_scores.reshape(-1).tolist(), float(scores[indices[0]]),
+                             dino_scores.tolist())
         except torch.cuda.OutOfMemoryError as error:
             raise InferenceError(
                 "GPU memory exhausted. Reuse one extractor per process and avoid concurrent "

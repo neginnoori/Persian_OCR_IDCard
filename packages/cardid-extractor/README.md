@@ -90,7 +90,12 @@ face detection execute on CPU; DINO, SAM and EasyOCR execute on CUDA and their d
 
 The layout is the **front of an Iranian national ID card**, matching the notebook. The scorer uses
 fixed Persian labels and expects a portrait on the left. It is not a generic document/back-side extractor.
-If multiple cards exist, the highest-scoring DINO detection is processed, just as in the notebook.
+The extractor checks up to three distinct DINO boxes and verifies the rectified card against
+the expected field rows and portrait. If none qualifies, it tries card-shaped image contours.
+The fallback also checks large light and dark regions when the outline is broken.
+It can return a card-shaped crop for review when face position or field layout supports it.
+If the card fills the frame or meets a white side margin, a frame crop may be returned for review when supported by card layout evidence.
+Border-touching fallback crops require review. A small ambiguous crop without card evidence is discarded.
 There is no guarantee of equal accuracy on grayscale photos; run the included real GPU smoke test
 on your inputs (including `--also-gray`). No extra grayscale conversion is applied to color inputs.
 

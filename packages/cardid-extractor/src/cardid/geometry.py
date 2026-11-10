@@ -121,6 +121,127 @@ def warp_candidates(img, quad, width=856, height=540):
     return candidates
 
 
+def quad_iou(first, second):
+    intersection, _ = cv2.intersectConvexConvex(first, second)
+    union = cv2.contourArea(first) + cv2.contourArea(second) - intersection
+    return intersection / union
+
+
+def _card_outline(contour, shape):
+    height, width = shape
+    area = cv2.contourArea(contour)
+    if not .15 < area / (height * width) < .97:
+        return None
+    hull = cv2.convexHull(contour)
+    approx = cv2.approxPolyDP(hull, .025 * cv2.arcLength(hull, True), True)
+    if len(approx) != 4:
+        return None
+    try:
+        quad = order_points(approx)
+    except ValueError:
+        return None
+    sides = np.linalg.norm(np.roll(quad, -1, axis=0) - quad, axis=1)
+    opposing = (sides[::2].mean(), sides[1::2].mean())
+    ratio = max(opposing) / min(opposing)
+    coverage = area / cv2.contourArea(quad)
+    if not 1.25 <= ratio <= 2.1 or coverage < .8:
+        return None
+    return coverage - .3 * abs(ratio - 1.586), quad
+
+
+def card_edge_quads(bgr):
+    """Propose card outlines from edges and large light or dark regions."""
+    height, width = bgr.shape[:2]
+    scale = min(1, 1024 / max(height, width))
+    if scale < 1:
+        bgr = cv2.resize(bgr, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+    gray = cv2.GaussianBlur(cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY), (5, 5), 0)
+    h, w = gray.shape
+    edge_proposals = []
+    for low, high in ((25, 75), (10, 35)):
+        edges = cv2.Canny(gray, low, high)
+        edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
+        contours, _ = cv2.findContours(edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+        for contour in contours:
+            proposal = _card_outline(contour, gray.shape)
+            if proposal is None:
+                continue
+            _, quad = proposal
+            if np.all(quad.min(axis=0) >= 2) and np.all(quad.max(axis=0) <= [w-3, h-3]):
+                edge_proposals.append(proposal)
+    distinct = []
+    for _, quad in sorted(edge_proposals, key=lambda proposal: proposal[0], reverse=True):
+        if all(quad_iou(quad, other) < .88 for other in distinct):
+            distinct.append(quad)
+            if len(distinct) == 2:
+                break
+
+    # A closed tone region can recover an outline broken at a stamp or the image border.
+    _, bright = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+    tone_proposals = []
+    for region in (bright, cv2.bitwise_not(bright)):
+        closed = cv2.morphologyEx(region, cv2.MORPH_CLOSE, np.ones((9, 9), np.uint8))
+        contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        for contour in contours:
+            proposal = _card_outline(contour, gray.shape)
+            if proposal is None:
+                continue
+            score, quad = proposal
+            refined = _refine_edges(quad, contour)
+            bounds = np.array([w - 1, h - 1], dtype=np.float32)
+            margin = .02 * min(h, w)
+            if refined is not None and np.all(refined >= -margin) and np.all(refined <= bounds + margin):
+                clipped = np.clip(refined, 0, bounds)
+                if quad_iou(quad, clipped) >= .88:
+                    quad = clipped
+            tone_proposals.append((score, quad))
+    for _, quad in sorted(tone_proposals, key=lambda proposal: proposal[0], reverse=True):
+        if all(quad_iou(quad, other) < .88 for other in distinct):
+            distinct.append(quad)
+            break
+    bounds = np.array([width - 1, height - 1], dtype=np.float32)
+    return [np.clip(quad / scale, 0, bounds) for quad in distinct]
+
+
+def card_frame_quads(bgr):
+    """Suggest full-bleed cards and cards separated from a white side margin."""
+    height, width = bgr.shape[:2]
+    portrait = height > width
+    short_side, long_side = sorted((height, width))
+    min_width = int(np.ceil(1.48 * short_side))
+    max_width = int(1.70 * short_side)
+
+    def outline(start, stop):
+        quad = np.array([[start, 0], [stop - 1, 0], [stop - 1, short_side - 1],
+                         [start, short_side - 1]], np.float32)
+        return order_points(quad[:, ::-1]) if portrait else quad
+
+    if min_width <= long_side <= max_width:
+        return [outline(0, long_side)]
+    if long_side < min_width:
+        return []
+
+    # Project near-white coverage along the long axis. A few stamps can sit inside the margin.
+    near_white = np.min(bgr, axis=2) >= 240
+    white = near_white.mean(axis=1 if portrait else 0)
+    window = max(3, round(.025 * short_side))
+    positions = np.arange(min_width, min(max_width, long_side - window) + 1)
+    if not positions.size:
+        return []
+    proposals = []
+    for reverse, profile in enumerate((white, white[::-1])):
+        cumulative = np.r_[0., profile.cumsum()]
+        left = (cumulative[positions] - cumulative[positions - window]) / window
+        right = (cumulative[positions + window] - cumulative[positions]) / window
+        margin = (cumulative[-1] - cumulative[positions]) / (long_side - positions)
+        strength = np.where(margin >= .8, right - left, 0)
+        best = int(np.argmax(strength))
+        if strength[best] >= .45:
+            boundary = int(positions[best])
+            proposals.append(outline(long_side - boundary, long_side) if reverse else outline(0, boundary))
+    return proposals
+
+
 def _normalize_persian(text):
     return re.sub(r'[^\w]', '', str(text).replace('ي', 'ی').replace('ك', 'ک').replace('\u200c', ''))
 
@@ -133,6 +254,8 @@ def score_orientation(card, reader, face_detector=None):
     h, w = card.shape[:2]
     labels = ['نام', 'خانوادگی', 'تولد', 'پدر', 'اعتبار', 'ملی', 'ایران', 'جمهوری', 'اسلامی']
     matched = set()
+    field_rows = set()
+    right_text_rows = set()
     text_evidence = 0.0
     valid_count = 0
     for box, text, confidence in results:
@@ -148,6 +271,14 @@ def score_orientation(card, reader, face_detector=None):
         if len(clean) < 2:
             continue
         matched.update(label for label in labels if label in clean)
+        center = points.mean(axis=0)
+        if center[0] > .5*w and .20*h < center[1] < .87*h and len(clean) >= 3:
+            right_text_rows.add(round(12 * center[1] / h))
+        if center[0] > .45*w and .14*h < center[1] < .87*h:
+            if any(label in clean for label in (
+                'نام', 'خانوادگی', 'تولد', 'پدر', 'اعتبار', 'شمارهملی', 'کدملی'
+            )):
+                field_rows.add(round(12 * center[1] / h))
         text_evidence += confidence*min(len(clean), 12)/12
         valid_count += 1
     face_found = False
@@ -163,7 +294,8 @@ def score_orientation(card, reader, face_detector=None):
     score = 3*len(matched) + min(text_evidence, 4.0) + 3*int(face_found)
     return {'score': float(score), 'keyword_count': len(matched),
             'matched_keywords': sorted(matched), 'text_count': valid_count,
-            'face_on_left': face_found}
+            'face_on_left': face_found, 'field_row_count': len(field_rows),
+            'right_text_row_count': len(right_text_rows)}
 
 
 def choose_orientation(candidates, reader, face_detector=None, override=None, min_margin=1.2):
@@ -179,7 +311,8 @@ def choose_orientation(candidates, reader, face_detector=None, override=None, mi
     best, second = rank[:2]
     evidence = scores[best]
     margin = evidence['score']-scores[second]['score']
-    enough = evidence['keyword_count'] >= 2 or (evidence['face_on_left'] and evidence['keyword_count'] >= 1)
+    enough = evidence['field_row_count'] >= 2 or (
+        evidence['face_on_left'] and evidence['field_row_count'] >= 1)
     ok = bool(enough and margin >= min_margin)
     return candidates[best], {'orientation_ok': ok, 'orientation_method': 'persian_text_and_face',
                              'corner_shift_degrees': candidates[best]['corner_shift_degrees'],

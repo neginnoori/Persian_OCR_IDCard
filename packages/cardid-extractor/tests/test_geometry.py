@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 import pytest
-from cardid.geometry import order_points,quad_from_mask,warp_candidates,choose_orientation
+from cardid.geometry import card_edge_quads, card_frame_quads, order_points, quad_from_mask, warp_candidates, choose_orientation
 
 
 def scene():
@@ -58,3 +58,35 @@ def test_invalid_and_clipped_masks():
         assert not quad_from_mask(circle)[1]['geometry_ok']
     except ValueError:
         pass
+
+
+
+def test_tone_outline_recovers_card_at_image_border():
+    photo = np.full((400, 640, 3), 30, np.uint8)
+    outline = np.array([[24, 0], [610, 12], [630, 380], [12, 373]], np.int32)
+    cv2.fillConvexPoly(photo, outline, (210, 215, 218))
+    cv2.rectangle(photo, (210, 275), (365, 330), (90, 50, 110), -1)
+
+    quads = card_edge_quads(photo)
+
+    assert quads
+    assert np.max(np.abs(quads[0] - outline)) < 12
+    assert np.all(quads[0] >= 0)
+
+
+
+def test_frame_outline_trims_stamped_white_margin_in_either_orientation():
+    photo = np.full((382, 919, 3), 255, np.uint8)
+    photo[:, :590] = (194, 205, 218)
+    cv2.rectangle(photo, (690, 110), (790, 150), (130, 40, 20), 5)
+
+    expected = [[0, 0], [589, 0], [589, 381], [0, 381]]
+    assert np.max(np.abs(card_frame_quads(photo)[0] - expected)) <= 2
+
+    expected = [[329, 0], [918, 0], [918, 381], [329, 381]]
+    assert np.max(np.abs(card_frame_quads(photo[:, ::-1])[0] - expected)) <= 2
+
+    expected = [[0, 0], [381, 0], [381, 589], [0, 589]]
+    assert np.max(np.abs(card_frame_quads(photo.transpose(1, 0, 2))[0] - expected)) <= 2
+
+    assert not card_frame_quads(np.full_like(photo, 255))
