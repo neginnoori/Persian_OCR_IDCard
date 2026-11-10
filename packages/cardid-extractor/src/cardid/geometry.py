@@ -208,7 +208,8 @@ def score_orientation(card, reader, face_detector=None):
                 face_found = True
                 break
     score = 3*len(matched) + min(text_evidence, 4.0) + 3*int(face_found)
-    return {'score': float(score), 'keyword_count': len(matched),
+    from .recovery import layout_evidence
+    return {**layout_evidence(results, w, h), 'score': float(score), 'keyword_count': len(matched),
             'matched_keywords': sorted(matched), 'text_count': valid_count,
             'face_on_left': face_found}
 
