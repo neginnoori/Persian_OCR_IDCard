@@ -86,6 +86,13 @@ class TorchBackend:
 
     def detect_masks(self, pil):
         """Return SAM candidates for the highest-scoring DINO card detection."""
+        return self._detect_masks(pil, alternatives=False)
+
+    def detect_alternative_masks(self, pil):
+        """Bounded recovery only: segment the next two DINO detections."""
+        return self._detect_masks(pil, alternatives=True)
+
+    def _detect_masks(self, pil, *, alternatives):
         torch = self.torch
         width, height = pil.size
         try:
@@ -100,9 +107,13 @@ class TorchBackend:
             if len(detection['boxes']) == 0:
                 return Detection([], [], None)
             best = int(detection['scores'].argmax())
-            box = detection['boxes'][best].detach().cpu().tolist()
-            score = float(detection['scores'][best])
-            sam_inputs = self.sam_processor(images=pil, input_boxes=[[box]], return_tensors="pt").to(self.device)
+            order = detection['scores'].argsort(descending=True).detach().cpu().tolist()
+            indices = [index for index in order if index != best][:2] if alternatives else [best]
+            if len(indices) == 0:
+                return Detection([], [], None)
+            boxes = detection['boxes'][indices].detach().cpu().tolist()
+            score = float(detection['scores'][indices[0]])
+            sam_inputs = self.sam_processor(images=pil, input_boxes=[boxes], return_tensors="pt").to(self.device)
             with torch.inference_mode():
                 sam_outputs = self.sam(**sam_inputs, multimask_output=True)
             masks = self.sam_processor.image_processor.post_process_masks(

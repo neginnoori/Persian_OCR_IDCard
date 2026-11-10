@@ -13,6 +13,21 @@ TEXT_DETECTOR='craft' retains the earlier detector for comparisons. Default Padd
 The API offers result.to_dataframe(), always assigning six named fields for processed/reviewed inputs. In orientation-only mode the field template is normalized to the rotated mask bounding box, so field assignment remains approximate under skew/perspective. Without a card mask it returns empty fields while preserving all raw OCR text. The standard-front-layout field template is heuristic: missing values stay empty, and label/value combined detections may remain unassigned. Do not treat candidate or format validation as correctness. No six-field accuracy benchmark is claimed.
 
 ## API
+### Stamped scan recovery
+
+The original highest-DINO/geometry candidate remains the baseline. Low or absent
+orientation keywords never remove its image. A recovery pass is attempted only for
+a small crop with positive company/copy-stamp text and without face/date/value-row
+support. It checks at most two additional DINO detections and an aspect-bounded
+full-image frame. A replacement must be at least 1.5 times larger and contain a
+left-side face plus four aligned right-side rows spanning the card, including a
+date. If no stronger proposal exists, the original pixels and transform remain.
+An inferred full-image frame is explicitly approximate, not verified geometry.
+`metadata.extraction.metadata.stamp_recovery` records the decision. This recovery
+is heuristic; it has synthetic regression coverage, not a real-image GPU accuracy
+claim. Model errors still propagate. The six-field schema and existing numeric
+and name assignment rules are unchanged; unreadable values remain missing.
+
 ```python
 from persian_id_ocr import PersianCardOCR
 engine = PersianCardOCR('./models')

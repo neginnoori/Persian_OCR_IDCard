@@ -148,7 +148,6 @@ class CardExtractor:
                 return ExtractionResult("needs_review", reason="no_reliable_quadrilateral", metadata=metadata)
             quad, metrics = max(proposals, key=lambda item: (
                 item[1]['geometry_ok'], item[1]['mask_quad_iou']+.05*item[1]['sam_predicted_iou']))
-            metadata.update(metrics)
             bgr = cv2.cvtColor(np.asarray(pil), cv2.COLOR_RGB2BGR)
             try:
                 candidates = warp_candidates(bgr, quad, self.config.width, self.config.height)
@@ -158,6 +157,12 @@ class CardExtractor:
             except Exception as error:
                 # Runtime/model errors must be visible to the service, not silently accepted.
                 raise InferenceError(f"Card rectification/orientation failed: {error}") from error
+            if orientation_override is None:
+                from .recovery import recover_stamp_candidate
+                chosen, orientation, metrics, recovery = recover_stamp_candidate(
+                    pil, backend, self.config, chosen, orientation, metrics)
+                metadata['stamp_recovery'] = recovery
+            metadata.update(metrics)
             metadata.update(orientation)
             matrix = chosen['H']
             metadata.update(original_to_card_H=matrix.tolist(), card_to_original_H=np.linalg.inv(matrix).tolist(),
