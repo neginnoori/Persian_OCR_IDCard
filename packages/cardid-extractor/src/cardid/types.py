@@ -20,8 +20,8 @@ class ExtractorConfig:
     candidate_selection: str = "legacy"
 
     def __post_init__(self):
-        if self.candidate_selection not in ("legacy", "v2"):
-            raise ValueError("candidate_selection must be legacy or v2")
+        if self.candidate_selection not in ("legacy", "v2", "v3"):
+            raise ValueError("candidate_selection must be legacy, v2 or v3")
         if self.device not in ("cuda", "cuda:0"):
             raise ValueError("Only CUDA GPU 0 is supported: device='cuda' or 'cuda:0'")
         if not isinstance(self.width, int) or not isinstance(self.height, int) or min(self.width, self.height) < 32:

@@ -107,3 +107,21 @@ def test_full_extractor_v2_preserves_working_card_pixels_and_transform(monkeypat
     for key in ['original_to_card_H','source_corners','orientation_scores']:
         assert legacy.metadata[key]==v2.metadata[key]
     assert not v2.metadata['candidate_selection']['attempted']
+
+
+def test_v3_recovers_unreadable_small_stamp_without_keywords(monkeypatch):
+    import cardid.geometry as geometry
+    backend=SimpleNamespace(detect_diverse_masks=lambda _: Detection([],[],None),reader=None,face_detector=None)
+    monkeypatch.setattr(geometry,'score_orientation',lambda *a:{})
+    original=baseline(stamp=False)
+    result=select_card_v2(Image.new('RGB',(1000,600)),backend,ExtractorConfig(candidate_selection='v3'),original)
+    assert result.metadata['candidate_selection']['attempted']
+    assert result.metadata['field_assignment_mode']=='anchors_v1'
+
+
+def test_v3_preserves_supported_baseline(monkeypatch):
+    original=baseline(stamp=False)
+    original.metadata['orientation_scores']=[evidence()]*4
+    result=select_card_v2(Image.new('RGB',(1000,600)),object(),ExtractorConfig(candidate_selection='v3'),original)
+    assert result is original
+    assert not result.metadata['candidate_selection']['attempted']

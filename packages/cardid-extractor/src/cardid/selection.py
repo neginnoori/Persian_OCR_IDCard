@@ -8,7 +8,7 @@ import cv2
 import numpy as np
 from PIL import Image
 from .types import ExtractionResult
-from .recovery import recovery_needed
+from .recovery import recovery_needed, selected_evidence
 
 
 def diverse_boxes(boxes, scores, limit=4):
@@ -74,7 +74,18 @@ def select_card_v2(pil, backend, config, baseline, override=None):
         meta = baseline.metadata
         chosen = {'quad': np.float32(meta['source_corners'])}
         audit['baseline_quad'] = meta['source_corners']
-        if override is not None or not recovery_needed(chosen, meta, pil.size):
+        suspicious = recovery_needed(chosen, meta, pil.size)
+        if config.candidate_selection == 'v3':
+            evidence = selected_evidence(meta)
+            area = abs(cv2.contourArea(chosen['quad'])) / (pil.width * pil.height)
+            # A tiny ambiguous crop with no card evidence can be an unreadable
+            # stamp. Do not require the OCR to spell a stamp keyword correctly.
+            sparse = (evidence.get('value_row_count', 0) <= 2
+                      and not evidence.get('date_row_count', 0)
+                      and not evidence.get('face_on_left')
+                      and not card_support(evidence)['supported'])
+            suspicious = suspicious or (area < .45 and not meta.get('orientation_ok', False) and sparse)
+        if override is not None or not suspicious:
             baseline.metadata['candidate_selection'] = audit
             return baseline
     audit.update(attempted=True, reason='stamp_or_missing_card')

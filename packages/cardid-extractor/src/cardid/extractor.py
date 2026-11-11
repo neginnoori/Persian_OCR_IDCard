@@ -132,7 +132,7 @@ class CardExtractor:
             detection = backend.detect_masks(pil)
             metadata = {"original_size": list(pil.size), "dino_score": detection.dino_score,
                         "coordinate_space": "exif_corrected_input", "runtime": self.runtime_info}
-            if self.config.candidate_selection == 'v2' and not detection.masks:
+            if self.config.candidate_selection in ('v2', 'v3') and not detection.masks:
                 from .selection import select_card_v2
                 return select_card_v2(pil, backend, self.config, None, orientation_override)
             if not detection.masks:
@@ -146,7 +146,7 @@ class CardExtractor:
                     continue
                 metrics['sam_predicted_iou'] = sam_score
                 proposals.append((quad, metrics))
-            if self.config.candidate_selection == 'v2' and not proposals:
+            if self.config.candidate_selection in ('v2', 'v3') and not proposals:
                 from .selection import select_card_v2
                 return select_card_v2(pil, backend, self.config, None, orientation_override)
             if not proposals:
@@ -182,7 +182,7 @@ class CardExtractor:
                 reasons.append("ambiguous_orientation")
             result = ExtractionResult("needs_review" if reasons else "ok", image=output,
                                       reason=",".join(reasons) or None, metadata=metadata)
-            if self.config.candidate_selection == 'v2':
+            if self.config.candidate_selection in ('v2', 'v3'):
                 from .selection import select_card_v2
                 result = select_card_v2(pil, backend, self.config, result, orientation_override)
             return result

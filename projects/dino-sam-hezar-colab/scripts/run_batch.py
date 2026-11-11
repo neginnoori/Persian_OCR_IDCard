@@ -96,7 +96,7 @@ def main():
     parser.add_argument('--text-detector', choices=['paddle','craft'], default='paddle')
     parser.add_argument('--paddle-device', choices=['cpu','gpu:0'])
     parser.add_argument('--preprocessing', choices=['orientation_only', 'rectify', 'rectify_best_effort'], default='rectify_best_effort')
-    parser.add_argument('--candidate-selection', choices=['legacy', 'v2'], default='legacy')
+    parser.add_argument('--candidate-selection', choices=['legacy', 'v2', 'v3'], default='legacy')
     args = parser.parse_args()
     run, summary = run_batch(args.inputs, args.output_root, args.cache_dir,
                              orientation_override=args.orientation_override,
