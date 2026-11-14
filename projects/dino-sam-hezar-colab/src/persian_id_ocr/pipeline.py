@@ -36,7 +36,9 @@ class PersianCardOCR:
     Opt into rectify mode for the previous strict perspective/geometry gate.
     """
     def __init__(self, cache_dir='./models', *, hezar_device='cuda', batch_size=8,
-                 extractor=None, reader=None, detector_backend='paddle', detector_device=None, preprocessing='rectify_best_effort', candidate_selection='legacy'):
+                 extractor=None, reader=None, detector_backend='paddle', detector_device=None,
+                 preprocessing='rectify_best_effort', candidate_selection='legacy',
+                 bsrgan_model_path=None, bsrgan_source_dir=None):
         if preprocessing not in ('orientation_only', 'rectify', 'rectify_best_effort'):
             raise ValueError('preprocessing must be orientation_only, rectify or rectify_best_effort')
         if candidate_selection not in ('legacy', 'v2', 'v3'):
@@ -45,7 +47,10 @@ class PersianCardOCR:
         self.candidate_selection = candidate_selection
         cache = Path(cache_dir)
         self.extractor = extractor if extractor is not None else CardExtractor(ExtractorConfig(cache_dir=cache/'extraction', candidate_selection=candidate_selection))
-        self.reader = reader if reader is not None else HezarReader(cache/'hezar', device=hezar_device, batch_size=batch_size, detector_backend=detector_backend, detector_device=detector_device)
+        self.reader = reader if reader is not None else HezarReader(
+            cache/'hezar', device=hezar_device, batch_size=batch_size,
+            detector_backend=detector_backend, detector_device=detector_device,
+            bsrgan_model_path=bsrgan_model_path, bsrgan_source_dir=bsrgan_source_dir)
         self._lock = RLock()
 
     def process(self, image, *, color_order='RGB', orientation_override=None):
@@ -88,6 +93,8 @@ class PersianCardOCR:
                 raise RuntimeError('Extractor accepted a card but returned no image')
             regions = self.reader.read(extraction.image)
             metadata['text_detector_device'] = getattr(getattr(self.reader, 'detector', None), 'device', None)
+            if getattr(self.reader, 'enhancement_audit', None) is not None:
+                metadata['text_detection_enhancement'] = self.reader.enhancement_audit
             metadata.update(ocr_seconds=perf_counter()-extracted_at, total_seconds=perf_counter()-started)
             has_text = any(r['text_raw'].strip() for r in regions)
             frame = extraction.metadata.get('card_frame') if effective_mode == 'orientation_only' else None

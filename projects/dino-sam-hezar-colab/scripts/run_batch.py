@@ -38,11 +38,14 @@ def save_selection_audit(source, report, folder):
 
 
 def run_batch(inputs, output_root, cache_dir, *, pipeline=None, orientation_override=None,
-              detector_backend='paddle', detector_device=None, preprocessing='rectify_best_effort', candidate_selection='legacy'):
+              detector_backend='paddle', detector_device=None, preprocessing='rectify_best_effort',
+              candidate_selection='legacy', bsrgan_model_path=None, bsrgan_source_dir=None):
     run = Path(output_root)/datetime.now(timezone.utc).strftime('run_%Y%m%d_%H%M%S_%f')
     run.mkdir(parents=True, exist_ok=False)
     pipeline = pipeline if pipeline is not None else PersianCardOCR(
-        cache_dir, detector_backend=detector_backend, detector_device=detector_device, preprocessing=preprocessing, candidate_selection=candidate_selection)
+        cache_dir, detector_backend=detector_backend, detector_device=detector_device,
+        preprocessing=preprocessing, candidate_selection=candidate_selection,
+        bsrgan_model_path=bsrgan_model_path, bsrgan_source_dir=bsrgan_source_dir)
     summary = []
     for index, source in enumerate(inputs):
         name = re.sub(r'[^\w.-]', '_', Path(source).stem)[:80] or 'image'
@@ -55,12 +58,17 @@ def run_batch(inputs, output_root, cache_dir, *, pipeline=None, orientation_over
             if result.image is not None:
                 accepted = result.status in ('ocr_candidate', 'no_text')
                 result.image.save(folder/('card.png' if accepted else 'card_needs_review.png'))
+                enhanced_preview = getattr(getattr(pipeline, 'reader', None), 'enhanced_preview', None)
+                if enhanced_preview is not None:
+                    enhanced_preview.save(folder/'bsrgan_card_x2.png')
                 if result.regions:
                     marked = result.image.copy()
                     draw = ImageDraw.Draw(marked)
                     for i, region in enumerate(result.regions):
-                        draw.rectangle(region['box'], outline='red', width=2)
-                        draw.text(tuple(region['box'][:2]), str(i), fill='red')
+                        added_by_bsrgan = 'bsrgan_x2' in region.get('detection_sources', [])
+                        color = 'orange' if added_by_bsrgan else 'red'
+                        draw.rectangle(region['box'], outline=color, width=2)
+                        draw.text(tuple(region['box'][:2]), str(i), fill=color)
                     marked.save(folder/'text_boxes.png')
             import csv
             with (folder/'fields.csv').open('w', newline='', encoding='utf-8-sig') as handle:
@@ -97,10 +105,14 @@ def main():
     parser.add_argument('--paddle-device', choices=['cpu','gpu:0'])
     parser.add_argument('--preprocessing', choices=['orientation_only', 'rectify', 'rectify_best_effort'], default='rectify_best_effort')
     parser.add_argument('--candidate-selection', choices=['legacy', 'v2', 'v3'], default='legacy')
+    parser.add_argument('--bsrgan-model', type=Path)
+    parser.add_argument('--bsrgan-source-dir', type=Path)
     args = parser.parse_args()
     run, summary = run_batch(args.inputs, args.output_root, args.cache_dir,
                              orientation_override=args.orientation_override,
-                             detector_backend=args.text_detector, detector_device=args.paddle_device, preprocessing=args.preprocessing, candidate_selection=args.candidate_selection)
+                             detector_backend=args.text_detector, detector_device=args.paddle_device,
+                             preprocessing=args.preprocessing, candidate_selection=args.candidate_selection,
+                             bsrgan_model_path=args.bsrgan_model, bsrgan_source_dir=args.bsrgan_source_dir)
     print('Results:', run, flush=True)
     return 1 if any(r['status'] == 'error' for r in summary) else (
         2 if any(r['status'] != 'ocr_candidate' for r in summary) else 0)

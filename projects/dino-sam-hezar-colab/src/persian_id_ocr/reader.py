@@ -56,7 +56,8 @@ class HezarReader:
     Headless OpenCV is installed explicitly rather than hezar[vision], which would
     install a second conflicting cv2 distribution alongside EasyOCR's dependency.
     """
-    def __init__(self, cache_dir, device='cuda', batch_size=8, *, detector_backend='paddle', detector_device=None):
+    def __init__(self, cache_dir, device='cuda', batch_size=8, *, detector_backend='paddle', detector_device=None,
+                 bsrgan_model_path=None, bsrgan_source_dir=None):
         if device not in ('cuda', 'cuda:0', 'cpu'):
             raise ValueError('device must be cuda, cuda:0, or cpu')
         if not isinstance(batch_size, int) or isinstance(batch_size, bool) or batch_size < 1:
@@ -67,6 +68,16 @@ class HezarReader:
         self.detector_device = detector_device
         self.cache_dir, self.device = Path(cache_dir), device
         self.batch_size = batch_size
+        if (bsrgan_model_path is None) != (bsrgan_source_dir is None):
+            raise ValueError('BSRGAN needs both a weights file and source directory')
+        if bsrgan_model_path is not None and detector_backend != 'paddle':
+            raise ValueError('The BSRGAN text-detection experiment currently requires PaddleOCR')
+        self.bsrgan_model_path = bsrgan_model_path
+        self.bsrgan_source_dir = bsrgan_source_dir
+        self.enhancer = None
+        self.enhancement_load_error = None
+        self.enhancement_audit = None
+        self.enhanced_preview = None
         self.detector = self.recognizer = None
         self._lock = RLock()
 
@@ -90,11 +101,21 @@ class HezarReader:
             try:
                 recognizer = Model.load('hezarai/crnn-base-fa-v2', device=self.device, cache_dir=str(self.cache_dir))
                 recognizer.eval()
+                enhancer = None
+                if self.bsrgan_model_path is not None:
+                    from .bsrgan import BSRGANX2
+                    try:
+                        enhancer = BSRGANX2(self.bsrgan_model_path, self.bsrgan_source_dir, device=self.device)
+                    except Exception as error:
+                        self.enhancement_load_error = type(error).__name__
+                        import torch
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
             except BaseException:
                 if hasattr(detector, 'close'):
                     detector.close()
                 raise
-            self.detector, self.recognizer = detector, recognizer
+            self.detector, self.recognizer, self.enhancer = detector, recognizer, enhancer
         return self
 
     def read(self, card):
@@ -102,12 +123,63 @@ class HezarReader:
             raise TypeError('read() expects an upright PIL card image')
         card = card.convert('RGB')
         with self._lock:
+            self.enhanced_preview = None
             self.load()
             import torch
             regions, crops, boxes = [], [], []
             detected = []
             if self.detector_backend == 'paddle':
                 detected = self.detector.detect(card)
+                original_count = len(detected)
+                enhanced_count = 0
+                added_count = 0
+                enhancement_status = 'disabled'
+                if self.enhancement_load_error:
+                    enhancement_status = 'load_failed'
+                elif self.enhancer is not None:
+                    enhancement_status = 'failed'
+                    try:
+                        enhanced_image = self.enhancer.enhance(card)
+                        self.enhanced_preview = enhanced_image
+                        enhanced_detections = self.detector.detect(enhanced_image)
+                        enhanced_count = len(enhanced_detections)
+                        scale_x = card.width / enhanced_image.width
+                        scale_y = card.height / enhanced_image.height
+                        for item in enhanced_detections:
+                            candidate = dict(item)
+                            candidate['box'] = [
+                                max(0, int(math.floor(item['box'][0] * scale_x))),
+                                max(0, int(math.floor(item['box'][1] * scale_y))),
+                                min(card.width, int(math.ceil(item['box'][2] * scale_x))),
+                                min(card.height, int(math.ceil(item['box'][3] * scale_y))),
+                            ]
+                            candidate['polygon'] = [
+                                [float(point[0] * scale_x), float(point[1] * scale_y)]
+                                for point in item['polygon']
+                            ]
+                            candidate['detection_source'] = 'bsrgan_x2'
+                            if not any(_box_iou(candidate['box'], original['box']) >= .50
+                                       for original in detected):
+                                detected.append(candidate)
+                                added_count += 1
+                        enhancement_status = 'applied'
+                    except Exception as error:
+                        self.enhancement_load_error = type(error).__name__
+                        self.enhancer = None
+                        import torch
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
+                for item in detected:
+                    item.setdefault('detection_source', 'original')
+                self.enhancement_audit = {
+                    'method': 'bsrgan_x2' if self.bsrgan_model_path is not None else None,
+                    'status': enhancement_status,
+                    'error_type': self.enhancement_load_error,
+                    'original_detection_count': original_count,
+                    'enhanced_detection_count': enhanced_count,
+                    'added_box_count': added_count,
+                    'recognition_crops_from': 'original_card',
+                }
                 boxes = [item['box'] for item in detected]
             else:
                 scale = min(1., 1280 / max(card.size))
@@ -144,7 +216,8 @@ class HezarReader:
                     from .detection import crop_polygon
                     sources = [d for d in detected if d['box'] in group['source_boxes']]
                     regions[-1].update(source_polygons=[d['polygon'] for d in sources],
-                                       detection_scores=[d['detection_score'] for d in sources])
+                                       detection_scores=[d['detection_score'] for d in sources],
+                                       detection_sources=[d['detection_source'] for d in sources])
                     if len(sources) == 1:
                         regions[-1]['recognition_crop_method'] = 'perspective_polygon_with_padding'
                         crops.append(crop_polygon(card, sources[0]['polygon']))
@@ -180,4 +253,19 @@ class HezarReader:
         with self._lock:
             if self.detector is not None and hasattr(self.detector, 'close'):
                 self.detector.close()
+            if self.enhancer is not None:
+                del self.enhancer
+                self.enhancer = None
+
+
+def _box_iou(first, second):
+    x1 = max(first[0], second[0])
+    y1 = max(first[1], second[1])
+    x2 = min(first[2], second[2])
+    y2 = min(first[3], second[3])
+    intersection = max(0, x2 - x1) * max(0, y2 - y1)
+    area_first = max(0, first[2] - first[0]) * max(0, first[3] - first[1])
+    area_second = max(0, second[2] - second[0]) * max(0, second[3] - second[1])
+    union = area_first + area_second - intersection
+    return intersection / union if union else 0.0
 
