@@ -95,6 +95,7 @@ class PersianCardOCR:
             regions = self.reader.read(extraction.image)
             metadata['text_detector_device'] = getattr(getattr(self.reader, 'detector', None), 'device', None)
             if getattr(self.reader, 'enhancement_audit', None) is not None:
+                metadata['image_enhancement'] = self.reader.enhancement_audit
                 metadata['text_detection_enhancement'] = self.reader.enhancement_audit
             metadata.update(ocr_seconds=perf_counter()-extracted_at, total_seconds=perf_counter()-started)
             has_text = any(r['text_raw'].strip() for r in regions)
@@ -140,20 +141,27 @@ class PersianCardOCR:
                 for original, enhanced in zip(baseline_fields, bsrgan_fields):
                     enhanced_valid = (enhanced.get('status') == 'candidate' and
                                       compatible(enhanced['field'], enhanced.get('value')))
-                    if enhanced_valid:
+                    original_valid = (original.get('status') == 'candidate' and
+                                      compatible(original['field'], original.get('value')))
+                    if enhanced_valid and not original_valid:
                         chosen = deepcopy(enhanced)
                         chosen['assignment_method'] += '+bsrgan_x2_ocr'
                         source = 'bsrgan_x2'
+                        reason = 'enhanced_repairs_invalid_original'
                         enhanced_source_region_ids.update(enhanced.get('source_region_ids', []))
                     else:
                         chosen = deepcopy(original)
                         source = 'original_card'
+                        reason = ('original_preserved_as_valid' if original_valid else
+                                  'no_type_valid_enhanced_candidate')
                     chosen['ocr_source'] = source
                     selected_fields.append(chosen)
                     decisions.append({'field': original['field'], 'selected_source': source,
                                       'original_value': original.get('value'),
                                       'bsrgan_value': enhanced.get('value'),
+                                      'original_type_valid': bool(original_valid),
                                       'bsrgan_type_valid': bool(enhanced_valid),
+                                      'selection_reason': reason,
                                       'selected_value': chosen.get('value')})
                 adaptive_regions = deepcopy(regions)
                 for index in enhanced_source_region_ids:
@@ -163,7 +171,7 @@ class PersianCardOCR:
                         adaptive_regions[index]['ocr_source'] = 'bsrgan_x2'
                 fields = selected_fields
                 metadata['bsrgan_ocr_comparison'] = {
-                    'selection_policy': 'use_bsrgan_when_field_type_is_valid_else_preserve_original',
+                    'selection_policy': 'use_bsrgan_only_to_repair_type_invalid_or_missing_fields',
                     'original_fields': baseline_fields,
                     'bsrgan_fields': bsrgan_fields,
                     'selected_fields': deepcopy(selected_fields),

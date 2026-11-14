@@ -133,8 +133,6 @@ class HezarReader:
             if self.detector_backend == 'paddle':
                 detected = self.detector.detect(card)
                 original_count = len(detected)
-                enhanced_count = 0
-                added_count = 0
                 enhancement_status = 'disabled'
                 if self.enhancement_load_error:
                     enhancement_status = 'load_failed'
@@ -143,27 +141,9 @@ class HezarReader:
                     try:
                         enhanced_image = self.enhancer.enhance(card)
                         self.enhanced_preview = enhanced_image
-                        enhanced_detections = self.detector.detect(enhanced_image)
-                        enhanced_count = len(enhanced_detections)
-                        scale_x = card.width / enhanced_image.width
-                        scale_y = card.height / enhanced_image.height
-                        for item in enhanced_detections:
-                            candidate = dict(item)
-                            candidate['box'] = [
-                                max(0, int(math.floor(item['box'][0] * scale_x))),
-                                max(0, int(math.floor(item['box'][1] * scale_y))),
-                                min(card.width, int(math.ceil(item['box'][2] * scale_x))),
-                                min(card.height, int(math.ceil(item['box'][3] * scale_y))),
-                            ]
-                            candidate['polygon'] = [
-                                [float(point[0] * scale_x), float(point[1] * scale_y)]
-                                for point in item['polygon']
-                            ]
-                            candidate['detection_source'] = 'bsrgan_x2'
-                            if not any(_box_iou(candidate['box'], original['box']) >= .50
-                                       for original in detected):
-                                detected.append(candidate)
-                                added_count += 1
+                        # Keep the established v3 detection geometry unchanged.
+                        # BSRGAN is used to enhance recognition crops, not to
+                        # add boxes that could make field-row assignment ambiguous.
                         enhancement_status = 'applied'
                     except Exception as error:
                         self.enhancement_load_error = type(error).__name__
@@ -178,8 +158,9 @@ class HezarReader:
                     'status': enhancement_status,
                     'error_type': self.enhancement_load_error,
                     'original_detection_count': original_count,
-                    'enhanced_detection_count': enhanced_count,
-                    'added_box_count': added_count,
+                    'enhanced_detection_count': None,
+                    'added_box_count': 0,
+                    'geometry_source': 'original_text_detections_only',
                     'recognition_candidates': (['original_card', 'bsrgan_x2']
                                                if enhanced_image is not None else ['original_card']),
                 }
@@ -293,16 +274,4 @@ class HezarReader:
             if self.enhancer is not None:
                 del self.enhancer
                 self.enhancer = None
-
-
-def _box_iou(first, second):
-    x1 = max(first[0], second[0])
-    y1 = max(first[1], second[1])
-    x2 = min(first[2], second[2])
-    y2 = min(first[3], second[3])
-    intersection = max(0, x2 - x1) * max(0, y2 - y1)
-    area_first = max(0, first[2] - first[0]) * max(0, first[3] - first[1])
-    area_second = max(0, second[2] - second[0]) * max(0, second[3] - second[1])
-    union = area_first + area_second - intersection
-    return intersection / union if union else 0.0
 
