@@ -182,7 +182,7 @@ class PersianCardOCR:
                 for item in fields:
                     item_ids = set(item.get('source_region_ids', []))
                     item['ocr_source'] = ('bsrgan_x2' if item_ids.intersection(enhanced_ids)
-                                          else item.get('ocr_source', 'original_card'))
+                                          else 'original_card')
                 metadata['bsrgan_ocr_comparison']['final_fields'] = deepcopy(fields)
             metadata.update(ocr_seconds=perf_counter()-extracted_at,
                             total_seconds=perf_counter()-started)
