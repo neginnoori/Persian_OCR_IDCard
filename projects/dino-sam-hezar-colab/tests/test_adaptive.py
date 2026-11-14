@@ -28,6 +28,10 @@ def test_stamp_does_not_replace_fields_without_anchors():
 def test_numeric_and_date_are_not_names():
     assert not compatible('father_name','1370/01/01')
     assert not compatible('last_name','0012345678')
+    assert not compatible('first_name','بر!هیمی')
+    assert not compatible('father_name','حسن ۱۲۳')
+    assert compatible('first_name','محمد رضا')
+    assert compatible('last_name','عبدالرحمن آذر')
 
 def test_valid_conflicting_same_region_not_overwritten():
     r=sample();b,_=assign_anchored_fields(r,(1000,700));b[0]['value']='0098765432'

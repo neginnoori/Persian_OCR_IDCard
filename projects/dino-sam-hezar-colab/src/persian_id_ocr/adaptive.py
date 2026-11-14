@@ -1,6 +1,7 @@
 """Optional, auditable field repair. Never use expected identity values."""
 from copy import deepcopy
 import re
+import unicodedata
 from .anchors import assign_anchored_fields
 from .anchor_gaps import supplement_name_rows
 from .reader import normalize_text
@@ -13,7 +14,10 @@ def compatible(field, value):
         return bool(re.fullmatch(r'[0-9]{10}', value))
     if field in NUMERIC:
         return bool(re.fullmatch(r'1[234][0-9]{2}/(?:0[1-9]|1[0-2])/(?:0[1-9]|[12][0-9]|3[01])', value))
-    return bool(value and any(c.isalpha() for c in value) and not re.search(r'[0-9]', value) and
+    name_characters = all(c.isalpha() or unicodedata.category(c).startswith('M')
+                          or c.isspace() or c in '\u200c\u200d' for c in value)
+    return bool(value and any(c.isalpha() for c in value) and name_characters and
+                not re.search(r'[0-9]', value) and
                 not any(x in value.replace(' ', '') for x in ('شمارهثبت','کپی','شرکت','برابراصل')))
 
 
