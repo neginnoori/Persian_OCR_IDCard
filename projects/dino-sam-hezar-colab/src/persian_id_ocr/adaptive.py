@@ -2,6 +2,7 @@
 from copy import deepcopy
 import re
 from .anchors import assign_anchored_fields
+from .anchor_gaps import supplement_name_rows
 from .reader import normalize_text
 
 NUMERIC = {'national_id', 'date_of_birth', 'expiry_date'}
@@ -12,17 +13,19 @@ def compatible(field, value):
         return bool(re.fullmatch(r'[0-9]{10}', value))
     if field in NUMERIC:
         return bool(re.fullmatch(r'1[234][0-9]{2}/(?:0[1-9]|1[0-2])/(?:0[1-9]|[12][0-9]|3[01])', value))
-    return bool(value and not re.search(r'[0-9]', value) and
+    return bool(value and any(c.isalpha() for c in value) and not re.search(r'[0-9]', value) and
                 not any(x in value.replace(' ', '') for x in ('شمارهثبت','کپی','شرکت','برابراصل')))
 
 
 def repair_fields(image, regions, baseline, recognize=None):
     output = deepcopy(baseline)
     proposals, evidence = assign_anchored_fields(regions, image.size)
-    audit = {'version': 'adaptive_fields_v1', 'baseline_fields': deepcopy(baseline),
-             'anchor_evidence': evidence, 'proposals': proposals, 'decisions': [], 'rereads': []}
+    proposals, gap_audit = supplement_name_rows(regions, proposals, evidence, compatible)
+    audit = {'version': 'adaptive_fields_v2', 'baseline_fields': deepcopy(baseline),
+             'anchor_evidence': evidence, 'row_recovery': gap_audit,
+             'proposals': proposals, 'decisions': [], 'rereads': []}
     consistent = evidence.get('reason') == 'consistent_label_anchors'
-    for old, new, result in zip(baseline, proposals, output):
+    for row, (old, new, result) in enumerate(zip(baseline, proposals, output)):
         reason = 'baseline_preserved'
         same = old.get('value') == new.get('value')
         valid = new['status'] == 'candidate' and compatible(new['field'],new['value'])
@@ -35,10 +38,21 @@ def repair_fields(image, regions, baseline, recognize=None):
         stripped_label = bool(new_ids == old_ids and new['value'] and
                               normalize_text(old.get('value') or '').endswith(new['value']))
         replace = consistent and valid and not same and (not old_valid or wrong_region or stripped_label)
+        interpolated = new['assignment_method'] == 'interpolated_anchor_row_v1'
+        if interpolated and old_valid:
+            box = old.get('box')
+            expected_y = gap_audit['row_origin'] + row * gap_audit['row_step']
+            # Interpolation is weaker evidence than a readable title. It may
+            # repair a displaced template row, but cannot overwrite a plausible
+            # name already on this row, even if another region is proposed.
+            displaced = box and abs((box[1] + box[3]) / 2 - expected_y) > .4 * gap_audit['row_step']
+            replace = replace and bool(displaced)
         if replace:
             result.update(deepcopy(new))
-            result['assignment_method'] = 'adaptive_label_anchors_v1'
-            reason = 'anchored_region_replaces_template' if wrong_region else 'anchored_value_repair'
+            result['assignment_method'] = ('adaptive_interpolated_row_v1' if interpolated
+                                           else 'adaptive_label_anchors_v1')
+            reason = ('interpolated_row_replaces_template' if interpolated else
+                      'anchored_region_replaces_template' if wrong_region else 'anchored_value_repair')
         elif consistent and valid and not same:
             reason = 'conflicting_candidate_preserved_for_review'
         audit['decisions'].append({'field':old['field'],'replaced':bool(replace),'reason':reason})
@@ -68,4 +82,10 @@ def repair_fields(image, regions, baseline, recognize=None):
             if accepted:
                 item.update(value=values[0],status='candidate',review_required=True,
                             assignment_method=item['assignment_method']+'+local_consensus')
+    # An ID/date left in a name slot is not a valid preserved name. Retain the
+    # original field in the audit and raw text, while reporting the type error.
+    for item, decision in zip(output, audit['decisions']):
+        if item['field'] not in NUMERIC and item.get('value') and not compatible(item['field'], item['value']):
+            item.update(value=None, status='invalid_format', review_required=True)
+            decision.update(replaced=True, reason='invalid_name_value_rejected')
     return output, audit
