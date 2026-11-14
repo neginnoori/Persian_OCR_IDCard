@@ -72,7 +72,10 @@ def run_batch(inputs, output_root, cache_dir, *, pipeline=None, orientation_over
                     marked.save(folder/'text_boxes.png')
             import csv
             with (folder/'fields.csv').open('w', newline='', encoding='utf-8-sig') as handle:
-                writer = csv.DictWriter(handle, fieldnames=['field','label','text_raw','value','box','source_region_ids','status','review_required','assignment_method','numeric_retry'])
+                base_columns = ['field','label','text_raw','value','box','source_region_ids',
+                                'status','review_required','assignment_method','numeric_retry']
+                extra_columns = [key for item in result.fields for key in item if key not in base_columns]
+                writer = csv.DictWriter(handle, fieldnames=base_columns + list(dict.fromkeys(extra_columns)))
                 writer.writeheader()
                 writer.writerows({**item, 'numeric_retry': json.dumps(item.get('numeric_retry'), ensure_ascii=False)} for item in result.fields)
             if result.image is not None:
