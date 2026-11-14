@@ -127,7 +127,9 @@ class HezarReader:
             self.load()
             import torch
             regions, crops, boxes = [], [], []
+            enhanced_crops, enhanced_region_indexes = [], []
             detected = []
+            enhanced_image = None
             if self.detector_backend == 'paddle':
                 detected = self.detector.detect(card)
                 original_count = len(detected)
@@ -178,7 +180,8 @@ class HezarReader:
                     'original_detection_count': original_count,
                     'enhanced_detection_count': enhanced_count,
                     'added_box_count': added_count,
-                    'recognition_crops_from': 'original_card',
+                    'recognition_candidates': (['original_card', 'bsrgan_x2']
+                                               if enhanced_image is not None else ['original_card']),
                 }
                 boxes = [item['box'] for item in detected]
             else:
@@ -221,6 +224,15 @@ class HezarReader:
                     if len(sources) == 1:
                         regions[-1]['recognition_crop_method'] = 'perspective_polygon_with_padding'
                         crops.append(crop_polygon(card, sources[0]['polygon']))
+                        if enhanced_image is not None:
+                            scale_x = enhanced_image.width / card.width
+                            scale_y = enhanced_image.height / card.height
+                            enhanced_polygon = [
+                                [float(point[0] * scale_x), float(point[1] * scale_y)]
+                                for point in sources[0]['polygon']
+                            ]
+                            enhanced_crops.append(crop_polygon(enhanced_image, enhanced_polygon))
+                            enhanced_region_indexes.append(len(regions) - 1)
                     else:
                         regions[-1]['recognition_crop_method'] = 'merged_axis_aligned_with_margin'
                         crops.append(card.crop(crop_box))
@@ -235,7 +247,32 @@ class HezarReader:
                     raise RuntimeError('Hezar recognition result count differs from crop count')
                 for region, prediction in zip(regions[start:start+self.batch_size], predictions):
                     raw = str(prediction['text'])
-                    region.update(text_raw=raw, text=normalize_text(raw))
+                    region.update(text_original_raw=raw, text_original=normalize_text(raw),
+                                  text_raw=raw, text=normalize_text(raw),
+                                  ocr_source='original_card')
+            if enhanced_crops:
+                try:
+                    for start in range(0, len(enhanced_crops), self.batch_size):
+                        batch = enhanced_crops[start:start+self.batch_size]
+                        with torch.inference_mode():
+                            predictions = self.recognizer.predict(batch)
+                        if len(predictions) != len(batch):
+                            raise RuntimeError('Enhanced recognition result count differs from crop count')
+                        for offset, prediction in enumerate(predictions):
+                            region = regions[enhanced_region_indexes[start + offset]]
+                            raw = str(prediction['text'])
+                            region.update(text_bsrgan_raw=raw,
+                                          text_bsrgan=normalize_text(raw))
+                    self.enhancement_audit['enhanced_recognition_status'] = 'applied'
+                except Exception as error:
+                    # Keep all original OCR readings if the optional pass fails.
+                    self.enhancement_audit['enhanced_recognition_status'] = 'failed'
+                    self.enhancement_audit['enhanced_recognition_error'] = type(error).__name__
+                    import torch
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+            if self.enhancement_audit is not None and enhanced_image is not None:
+                self.enhancement_audit['enhanced_recognition_count'] = len(enhanced_crops)
             return reading_order(regions)
 
     def recognize_crops(self, crops):

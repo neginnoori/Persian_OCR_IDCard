@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from copy import deepcopy
 from pathlib import Path
 from threading import RLock
 from time import perf_counter
@@ -115,13 +116,74 @@ class PersianCardOCR:
                 from .numeric_retry import retry_numeric_fields
                 fields = retry_numeric_fields(extraction.image, fields,
                                               self.reader.recognize_crops, frame=frame)
+            adaptive_regions = regions
+            enhancement = getattr(self.reader, 'enhancement_audit', None)
+            if (enhancement and enhancement.get('enhanced_recognition_status') == 'applied'
+                    and any('text_bsrgan_raw' in region for region in regions)):
+                from .adaptive import compatible
+                bsrgan_regions = deepcopy(regions)
+                for region in bsrgan_regions:
+                    if 'text_bsrgan_raw' in region:
+                        region['text_raw'] = region['text_bsrgan_raw']
+                        region['text'] = region['text_bsrgan']
+                if anchor_mode:
+                    from .anchors import assign_anchored_fields
+                    bsrgan_fields, bsrgan_assignment_audit = assign_anchored_fields(
+                        bsrgan_regions, extraction.image.size)
+                else:
+                    bsrgan_fields = assign_fields(field_regions and bsrgan_regions or [],
+                                                  extraction.image.size, frame=frame)
+                    bsrgan_assignment_audit = None
+                baseline_fields = deepcopy(fields)
+                selected_fields, decisions = [], []
+                enhanced_source_region_ids = set()
+                for original, enhanced in zip(baseline_fields, bsrgan_fields):
+                    enhanced_valid = (enhanced.get('status') == 'candidate' and
+                                      compatible(enhanced['field'], enhanced.get('value')))
+                    if enhanced_valid:
+                        chosen = deepcopy(enhanced)
+                        chosen['assignment_method'] += '+bsrgan_x2_ocr'
+                        source = 'bsrgan_x2'
+                        enhanced_source_region_ids.update(enhanced.get('source_region_ids', []))
+                    else:
+                        chosen = deepcopy(original)
+                        source = 'original_card'
+                    chosen['ocr_source'] = source
+                    selected_fields.append(chosen)
+                    decisions.append({'field': original['field'], 'selected_source': source,
+                                      'original_value': original.get('value'),
+                                      'bsrgan_value': enhanced.get('value'),
+                                      'bsrgan_type_valid': bool(enhanced_valid),
+                                      'selected_value': chosen.get('value')})
+                adaptive_regions = deepcopy(regions)
+                for index in enhanced_source_region_ids:
+                    if 0 <= index < len(adaptive_regions) and 'text_bsrgan_raw' in adaptive_regions[index]:
+                        adaptive_regions[index]['text_raw'] = adaptive_regions[index]['text_bsrgan_raw']
+                        adaptive_regions[index]['text'] = adaptive_regions[index]['text_bsrgan']
+                        adaptive_regions[index]['ocr_source'] = 'bsrgan_x2'
+                fields = selected_fields
+                metadata['bsrgan_ocr_comparison'] = {
+                    'selection_policy': 'use_bsrgan_when_field_type_is_valid_else_preserve_original',
+                    'original_fields': baseline_fields,
+                    'bsrgan_fields': bsrgan_fields,
+                    'selected_fields': deepcopy(selected_fields),
+                    'decisions': decisions,
+                    'field_assignment_audit': bsrgan_assignment_audit,
+                }
             if self.candidate_selection == 'v3':
                 from .adaptive import repair_fields
-                fields, repair_audit = repair_fields(extraction.image, regions, fields,
+                fields, repair_audit = repair_fields(extraction.image, adaptive_regions, fields,
                     getattr(self.reader, 'recognize_crops', None))
                 metadata['adaptive_fields'] = repair_audit
                 if any(d['replaced'] for d in repair_audit['decisions']):
                     metadata['field_assignment'] = 'adaptive_label_anchors_v1'
+            if 'bsrgan_ocr_comparison' in metadata:
+                enhanced_ids = enhanced_source_region_ids
+                for item in fields:
+                    item_ids = set(item.get('source_region_ids', []))
+                    item['ocr_source'] = ('bsrgan_x2' if item_ids.intersection(enhanced_ids)
+                                          else item.get('ocr_source', 'original_card'))
+                metadata['bsrgan_ocr_comparison']['final_fields'] = deepcopy(fields)
             metadata.update(ocr_seconds=perf_counter()-extracted_at,
                             total_seconds=perf_counter()-started)
             return OCRResult('ocr_candidate' if has_text else 'no_text', image=extraction.image,
